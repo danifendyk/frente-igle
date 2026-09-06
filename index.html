@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
+    <title>Homogeneización de Fachadas - Asamblea Cristiana</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <!-- BARRA SUPERIOR -->
+    <header class="app-header">
+        <div class="logo-group">
+            <span class="logo-badge">CAD 1:1</span>
+            <div>
+                <h1 class="app-title">Homogeneización de Fachadas <span class="app-subtitle">// Asamblea Cristiana</span></h1>
+            </div>
+        </div>
+        <div class="header-actions">
+            <button class="btn-action btn-mobile-toggle" id="btn-toggle-sidebar" title="Alternar panel de parámetros">
+                ⚙️ <span class="mobile-btn-text">Ajustes</span>
+            </button>
+            <button class="btn-action btn-secondary" id="btn-print" title="Imprimir plano o guardar en PDF">
+                🖨️ <span class="mobile-hide">Imprimir / PDF</span>
+            </button>
+            <button class="btn-action btn-dxf" id="btn-export-dxf" title="Descargar archivo de AutoCAD DXF">
+                📐 <span class="mobile-hide">Exportar </span>DXF
+            </button>
+        </div>
+    </header>
+
+    <!-- CUERPO PRINCIPAL -->
+    <div class="app-body">
+        
+        <!-- PANEL LATERAL DE CONTROLES -->
+        <aside class="sidebar" id="sidebar">
+            
+            <!-- CABECERA MÓVIL DEL PANEL (Sticky para teléfonos) -->
+            <div class="sidebar-mobile-header" id="sidebar-mobile-header">
+                <span class="sidebar-mobile-title">⚙️ Parámetros de Fachada</span>
+                <button class="btn-close-sidebar" id="btn-close-sidebar" title="Cerrar panel y ver plano">
+                    ✕ Ver Fachada
+                </button>
+            </div>
+            
+            <!-- SECCIÓN 1: DIMENSIÓN PRINCIPAL (LARGO DEL FRENTE) -->
+            <div class="panel-section">
+                <div class="section-title">
+                    <span>Dimensión del Frente</span>
+                    <span class="badge-counter" id="badge-total-width">10.50 m</span>
+                </div>
+                
+                <div class="control-group">
+                    <div class="control-label">
+                        <span>Largo total (ancho terreno):</span>
+                        <span class="val-tag" id="val-total-width">10.50 m</span>
+                    </div>
+                    <div class="input-slider-row">
+                        <input type="range" id="slider-total-width" min="6.0" max="35.0" step="0.1" value="10.50">
+                        <input type="number" id="num-total-width" min="6.0" max="35.0" step="0.05" value="10.50">
+                    </div>
+                </div>
+
+                <div class="control-label" style="margin-top: 0.8rem; font-size: 0.75rem; color: var(--text-secondary);">
+                    <span>Preajustes Rápidos de Frente:</span>
+                </div>
+                <div class="preset-buttons">
+                    <button class="btn-preset active" data-val="10.50">10.50m (CAD)</button>
+                    <button class="btn-preset" data-val="12.00">12.00m</button>
+                    <button class="btn-preset" data-val="14.00">14.00m</button>
+                    <button class="btn-preset" data-val="16.00">16.00m (2v)</button>
+                    <button class="btn-preset" data-val="18.00">18.00m</button>
+                    <button class="btn-preset" data-val="22.20">22.20m (3v)</button>
+                    <button class="btn-preset" data-val="25.00">25.00m</button>
+                    <button class="btn-preset" data-val="30.00">30.00m</button>
+                </div>
+            </div>
+
+            <!-- SECCIÓN 2: PARÁMETROS DE VENTANAS Y REGLA DE 1.5 M -->
+            <div class="panel-section">
+                <div class="section-title">
+                    <span>Regla de Ventanas Góticas</span>
+                    <span class="badge-counter" id="badge-window-count">1 por ala (2 total)</span>
+                </div>
+
+                <div id="rule-status-banner" class="rule-status-banner valid">
+                    <span>✓ Geometría válida (≥ 1.50 m libres)</span>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">
+                        <span>Modo de distribución:</span>
+                    </label>
+                    <select id="select-dist-mode">
+                        <option value="auto">Automático (+1 ventana si hay ≥ 1.5m libres)</option>
+                        <option value="exact_150">Espaciado Fijo a 1.50 m libres</option>
+                        <option value="manual">Manual (Forzar cantidad por ala)</option>
+                    </select>
+                </div>
+
+                <div class="control-group" id="group-manual-count" style="display: none;">
+                    <div class="control-label">
+                        <span>Ventanas por ala:</span>
+                        <span class="val-tag" id="val-manual-count">1</span>
+                    </div>
+                    <div class="input-slider-row">
+                        <input type="range" id="slider-manual-count" min="0" max="6" step="1" value="1">
+                        <input type="number" id="num-manual-count" min="0" max="6" step="1" value="1">
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <div class="control-label">
+                        <span>Separación libre mínima:</span>
+                        <span class="val-tag" id="val-free-space">1.50 m</span>
+                    </div>
+                    <div class="input-slider-row">
+                        <input type="range" id="slider-free-space" min="1.0" max="3.0" step="0.05" value="1.50">
+                        <input type="number" id="num-free-space" min="1.0" max="3.0" step="0.05" value="1.50">
+                    </div>
+                </div>
+
+                <div class="rule-info-card">
+                    <strong>📐 Criterio de Homogeneización y Simetría:</strong>
+                    El pórtico central (2.92m ancho, 7.50m alto) y pilastras permanecen idénticos e inalterables en todas las iglesias.
+                    Las alas laterales se extienden manteniendo <strong>simetría rigurosa</strong> en cada lado (margen exterior = margen interior) y adaptando las ventanas según los <strong>1.5m libres</strong> disponibles entre ellas.
+                </div>
+            </div>
+
+            <!-- SECCIÓN 3: CAPAS Y VISUALIZACIÓN -->
+            <div class="panel-section">
+                <div class="section-title">
+                    <span>Visualización & Capas</span>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label">
+                        <span>Tema de presentación:</span>
+                    </label>
+                    <select id="select-theme">
+                        <option value="cad_dark" selected>CAD Oscuro (Plano Original)</option>
+                        <option value="cad_white">CAD Blanco (Técnico / Imprimir)</option>
+                        <option value="blueprint">Blueprint Azul Clásico</option>
+                        <option value="realistic">Fachada Arquitectónica Realista</option>
+                    </select>
+                </div>
+
+                <div class="toggle-grid">
+                    <label class="toggle-item">
+                        <input type="checkbox" id="toggle-dimensions" checked>
+                        <span>Cotas / Medidas</span>
+                    </label>
+                    <label class="toggle-item">
+                        <input type="checkbox" id="toggle-badges" checked>
+                        <span>Fondo en cotas</span>
+                    </label>
+                    <label class="toggle-item">
+                        <input type="checkbox" id="toggle-levels" checked>
+                        <span>Niveles NPT</span>
+                    </label>
+                    <label class="toggle-item">
+                        <input type="checkbox" id="toggle-human" checked>
+                        <span>Escala Humana</span>
+                    </label>
+                    <label class="toggle-item">
+                        <input type="checkbox" id="toggle-axes" checked>
+                        <span>Ejes de simetría</span>
+                    </label>
+                    <label class="toggle-item">
+                        <input type="checkbox" id="toggle-grid">
+                        <span>Cuadrícula métrica</span>
+                    </label>
+                </div>
+
+                <div class="control-group" style="margin-top: 0.9rem;">
+                    <div class="control-label">
+                        <span>Tamaño de números de cota:</span>
+                        <span class="val-tag" id="val-dim-size">0.20 m</span>
+                    </div>
+                    <div class="input-slider-row">
+                        <input type="range" id="slider-dim-size" min="0.14" max="0.35" step="0.01" value="0.20">
+                        <input type="number" id="num-dim-size" min="0.14" max="0.35" step="0.01" value="0.20">
+                    </div>
+                </div>
+
+                <div class="control-group" style="margin-top: 0.9rem;">
+                    <label class="control-label">
+                        <span>Rótulo Superior (Línea 1):</span>
+                    </label>
+                    <input type="text" id="input-title-line1" value="ASAMBLEA" maxlength="20">
+                </div>
+                <div class="control-group">
+                    <label class="control-label">
+                        <span>Rótulo Superior (Línea 2):</span>
+                    </label>
+                    <input type="text" id="input-title-line2" value="CRISTIANA" maxlength="20">
+                </div>
+                <div class="control-group">
+                    <div class="control-label">
+                        <span>Tamaño de letras:</span>
+                        <span class="val-tag" id="val-font-size">0.20 m</span>
+                    </div>
+                    <div class="input-slider-row">
+                        <input type="range" id="slider-font-size" min="0.10" max="0.35" step="0.01" value="0.20">
+                        <input type="number" id="num-font-size" min="0.10" max="0.35" step="0.01" value="0.20">
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECCIÓN 4: FICHA TÉCNICA MÉTRICA EN VIVO -->
+            <div class="panel-section" id="section-specs">
+                <div class="section-title">
+                    <span>Ficha Métrica en Tiempo Real</span>
+                </div>
+
+                <table class="specs-table">
+                    <tbody>
+                        <tr>
+                            <td class="label-col">Largo total del frente:</td>
+                            <td class="val-col" id="spec-total-width">10.50 m</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">Módulo portal central (fijo):</td>
+                            <td class="val-col">2.92 m</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">Ancho de cada ala:</td>
+                            <td class="val-col" id="spec-wing-width">3.79 m</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">Ventanas por ala:</td>
+                            <td class="val-col" id="spec-windows-per-wing">1 (2 total)</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">Separación libre entre ventanas:</td>
+                            <td class="val-col" id="spec-free-space">N/A</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">Margen exterior al borde:</td>
+                            <td class="val-col" id="spec-outer-margin">0.61 m</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">Margen interior a la columna:</td>
+                            <td class="val-col" id="spec-inner-margin">0.61 m</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">Cota paño del ala (izq/der):</td>
+                            <td class="val-col" id="spec-top-wing">3.29 m</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">Apertura central superior:</td>
+                            <td class="val-col">3.40 m (1.70 + 1.70 m)</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">Pilastras superiores:</td>
+                            <td class="val-col">0.26 m (ancho) | Long. 3.62 m</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">Base e inicio pilastras:</td>
+                            <td class="val-col">Base +4.08 m | Remate +7.70 m</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">Remate pilastra (der/izq):</td>
+                            <td class="val-col">1.40 m / 0.20 + 1.20 m</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">Altura máxima remate:</td>
+                            <td class="val-col">7.70 m</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- SECCIÓN 5: EXPORTACIÓN LOCAL OFFLINE -->
+            <div class="panel-section" style="border-bottom: none;">
+                <div class="section-title">
+                    <span>Exportar Plano</span>
+                </div>
+                <div class="action-buttons-grid">
+                    <button class="btn-action btn-dxf" id="btn-download-dxf">
+                        📐 Archivo DXF
+                    </button>
+                    <button class="btn-action btn-primary" id="btn-download-svg">
+                        🖼️ Vector SVG
+                    </button>
+                    <button class="btn-action btn-secondary" id="btn-download-png">
+                        📷 Imagen PNG
+                    </button>
+                    <button class="btn-action btn-secondary" id="btn-reset-view">
+                        🎯 Centrar Vista
+                    </button>
+                </div>
+            </div>
+
+        </aside>
+
+        <!-- ÁREA DEL VISOR CAD (CANVAS / SVG INTERACTIVO) -->
+        <main class="viewer-container" id="viewer-container">
+            
+            <!-- ESTADO / CHIP SUPERIOR -->
+            <div class="viewer-status">
+                <span>Frente: <span class="highlight" id="status-width">10.50 m</span></span>
+                <span class="status-sep">|</span>
+                <span class="status-win-item">Ventanas: <span class="highlight" id="status-windows">2 (1+1)</span></span>
+                <span class="status-sep status-win-item">|</span>
+                <span>Zoom: <span class="highlight" id="status-zoom">100%</span></span>
+                <span class="status-sep status-coords-item">|</span>
+                <span id="status-coords" class="status-coords-item" style="color: var(--accent-cyan); font-weight: 600;">X: 0.00 m | Y: 0.00 m</span>
+            </div>
+
+            <!-- CONTENEDOR TRANSFORMABLE CON PAN & ZOOM -->
+            <div class="viewer-viewport" id="viewer-viewport">
+                <div class="viewer-svg-wrapper" id="viewer-svg-wrapper">
+                    <!-- El SVG interactivo se inserta dinámicamente aquí -->
+                </div>
+            </div>
+
+            <!-- RÓTULO ARQUITECTÓNICO PARA IMPRESIÓN -->
+            <div class="print-titleblock" id="print-titleblock">
+                <table>
+                    <tr>
+                        <td rowspan="2" style="font-size: 1.1rem; font-weight: bold; width: 40%;">
+                            HOMOGENEIZACIÓN DE FACHADAS<br>
+                            <span style="font-size: 0.8rem; font-weight: normal;">ASAMBLEA CRISTIANA</span>
+                        </td>
+                        <td><strong>PLANO:</strong> Elevación Frontal Paramétrica</td>
+                        <td><strong>LARGO FRENTE:</strong> <span id="print-width">10.50 m</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>VENTANAS GÓTICAS:</strong> <span id="print-windows">2 unidades</span></td>
+                        <td><strong>FECHA:</strong> 2026 | <strong>ESCALA:</strong> Indicada</td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- BARRA DE HERRAMIENTAS FLOTANTE DEL VISOR -->
+            <div class="viewer-toolbar">
+                <button class="btn-tool" id="tool-zoom-in" title="Acercar (+)">➕</button>
+                <button class="btn-tool" id="tool-zoom-out" title="Alejar (-)">➖</button>
+                <button class="btn-tool" id="tool-zoom-reset" title="Restablecer escala al 100%">1:1</button>
+                <button class="btn-tool" id="tool-fit" title="Ajustar a pantalla">⛶</button>
+                <button class="btn-tool" id="tool-toggle-cotas" title="Alternar Cotas">📏</button>
+                <button class="btn-tool" id="tool-toggle-theme" title="Alternar Tema">🌓</button>
+            </div>
+
+        </main>
+
+    </div>
+
+    <!-- SCRIPTS -->
+    <script src="facade_engine.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const engine = new FacadeEngine();
+
+            // Elementos del DOM
+            const sliderTotalWidth = document.getElementById('slider-total-width');
+            const numTotalWidth = document.getElementById('num-total-width');
+            const valTotalWidth = document.getElementById('val-total-width');
+            const badgeTotalWidth = document.getElementById('badge-total-width');
+            const badgeWindowCount = document.getElementById('badge-window-count');
+            const ruleStatusBanner = document.getElementById('rule-status-banner');
+
+            const selectDistMode = document.getElementById('select-dist-mode');
+            const groupManualCount = document.getElementById('group-manual-count');
+            const sliderManualCount = document.getElementById('slider-manual-count');
+            const numManualCount = document.getElementById('num-manual-count');
+            const valManualCount = document.getElementById('val-manual-count');
+
+            const sliderFreeSpace = document.getElementById('slider-free-space');
+            const numFreeSpace = document.getElementById('num-free-space');
+            const valFreeSpace = document.getElementById('val-free-space');
+
+            const selectTheme = document.getElementById('select-theme');
+            const toggleDimensions = document.getElementById('toggle-dimensions');
+            const toggleBadges = document.getElementById('toggle-badges');
+            const toggleLevels = document.getElementById('toggle-levels');
+            const toggleHuman = document.getElementById('toggle-human');
+            const toggleAxes = document.getElementById('toggle-axes');
+            const toggleGrid = document.getElementById('toggle-grid');
+
+            const sliderDimSize = document.getElementById('slider-dim-size');
+            const numDimSize = document.getElementById('num-dim-size');
+            const valDimSize = document.getElementById('val-dim-size');
+
+            const inputTitle1 = document.getElementById('input-title-line1');
+            const inputTitle2 = document.getElementById('input-title-line2');
+            const sliderFontSize = document.getElementById('slider-font-size');
+            const numFontSize = document.getElementById('num-font-size');
+            const valFontSize = document.getElementById('val-font-size');
+
+            // Ficha métrica
+            const specTotalWidth = document.getElementById('spec-total-width');
+            const specWingWidth = document.getElementById('spec-wing-width');
+            const specWindowsPerWing = document.getElementById('spec-windows-per-wing');
+            const specFreeSpace = document.getElementById('spec-free-space');
+            const specOuterMargin = document.getElementById('spec-outer-margin');
+            const specInnerMargin = document.getElementById('spec-inner-margin');
+
+            // Status chip & Print block
+            const statusWidth = document.getElementById('status-width');
+            const statusWindows = document.getElementById('status-windows');
+            const statusZoom = document.getElementById('status-zoom');
+            const statusCoords = document.getElementById('status-coords');
+            const printWidth = document.getElementById('print-width');
+            const printWindows = document.getElementById('print-windows');
+
+            // Visor
+            const viewerContainer = document.getElementById('viewer-container');
+            const viewerViewport = document.getElementById('viewer-viewport');
+            const viewerSvgWrapper = document.getElementById('viewer-svg-wrapper');
+            const presetBtns = document.querySelectorAll('.btn-preset');
+
+            // Pan & Zoom
+            let zoomLevel = 1.0;
+            let panX = 0;
+            let panY = 0;
+            let isPanning = false;
+            let startPanX = 0;
+            let startPanY = 0;
+            let lastWorldBounds = null;
+
+            function updateViewportTransform() {
+                viewerViewport.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
+                statusZoom.textContent = `${Math.round(zoomLevel * 100)}%`;
+            }
+
+            function renderFacade() {
+                const totalWidth = parseFloat(sliderTotalWidth.value);
+                const minFreeSpace = parseFloat(sliderFreeSpace.value);
+                const distributionMode = selectDistMode.value;
+                const manualCount = parseInt(sliderManualCount.value);
+                const theme = selectTheme.value;
+
+                const showDimensions = toggleDimensions.checked;
+                const showDimBadges = toggleBadges.checked;
+                const showLevels = toggleLevels.checked;
+                const dimFontSize = parseFloat(sliderDimSize.value) || 0.20;
+                const showHuman = toggleHuman.checked;
+                const showAxes = toggleAxes.checked;
+                const showGrid = toggleGrid.checked;
+
+                const titleLine1 = (inputTitle1.value || 'ASAMBLEA').trim().toUpperCase();
+                const titleLine2 = (inputTitle2.value || 'CRISTIANA').trim().toUpperCase();
+                const titleFontSize = parseFloat(sliderFontSize.value) || 0.20;
+
+                const result = engine.generateSVG({
+                    totalWidth,
+                    minFreeSpace,
+                    distributionMode,
+                    manualCount,
+                    showDimensions,
+                    showDimBadges,
+                    showLevels,
+                    dimFontSize,
+                    showHuman,
+                    showAxes,
+                    showGrid,
+                    theme,
+                    titleLine1,
+                    titleLine2,
+                    titleFontSize
+                });
+
+                lastWorldBounds = result.worldBounds;
+                viewerSvgWrapper.innerHTML = result.svg;
+
+                const themeBgColors = {
+                    cad_dark: '#0f141c',
+                    cad_white: '#ffffff',
+                    blueprint: '#081c33',
+                    realistic: '#0b1120'
+                };
+                viewerContainer.style.backgroundColor = themeBgColors[theme] || '#0f141c';
+
+                const layout = result.layout;
+                valTotalWidth.textContent = `${totalWidth.toFixed(2)} m`;
+                badgeTotalWidth.textContent = `${totalWidth.toFixed(2)} m`;
+                statusWidth.textContent = `${totalWidth.toFixed(2)} m`;
+                printWidth.textContent = `${totalWidth.toFixed(2)} m`;
+
+                const winText = `${layout.numWindowsPerWing} por ala (${layout.totalWindows} total)`;
+                badgeWindowCount.textContent = winText;
+                statusWindows.textContent = `${layout.totalWindows} (${layout.numWindowsPerWing}+${layout.numWindowsPerWing})`;
+                printWindows.textContent = `${layout.totalWindows} (${layout.numWindowsPerWing} por ala)`;
+
+                // Banner de validación de regla
+                if (layout.isGeometryValid) {
+                    ruleStatusBanner.className = 'rule-status-banner valid';
+                    if (layout.numWindowsPerWing > 1) {
+                        ruleStatusBanner.innerHTML = `<span>✓ Cumple regla: ${layout.actualFreeSpace.toFixed(2)}m libres entre ventanas (≥ ${minFreeSpace.toFixed(2)}m)</span>`;
+                    } else {
+                        ruleStatusBanner.innerHTML = `<span>✓ Geometría base estándar del plano (1 ventana por ala)</span>`;
+                    }
+                } else {
+                    ruleStatusBanner.className = 'rule-status-banner invalid';
+                    ruleStatusBanner.innerHTML = `<span>⚠️ Espacio libre insuficiente (${layout.actualFreeSpace.toFixed(2)}m &lt; ${minFreeSpace.toFixed(2)}m)</span>`;
+                }
+
+                // Ficha métrica
+                specTotalWidth.textContent = `${totalWidth.toFixed(2)} m`;
+                specWingWidth.textContent = `${layout.wingWidth.toFixed(2)} m`;
+                specWindowsPerWing.textContent = `${layout.numWindowsPerWing} (${layout.totalWindows} en fachada)`;
+                
+                if (layout.numWindowsPerWing > 1) {
+                    specFreeSpace.textContent = `${layout.actualFreeSpace.toFixed(2)} m libres`;
+                } else {
+                    specFreeSpace.textContent = 'N/A (1 ventana)';
+                }
+
+                specOuterMargin.textContent = `${layout.actualOuterMargin.toFixed(2)} m`;
+                specInnerMargin.textContent = `${layout.actualInnerMargin.toFixed(2)} m`;
+                const specTopWing = document.getElementById('spec-top-wing');
+                if (specTopWing) {
+                    const topWingVal = Math.max(0, (totalWidth / 2.0 - 1.96)).toFixed(2);
+                    specTopWing.textContent = `${topWingVal} m`;
+                }
+
+                presetBtns.forEach(btn => {
+                    const btnVal = parseFloat(btn.dataset.val);
+                    if (Math.abs(btnVal - totalWidth) < 0.05) {
+                        btn.classList.add('active');
+                    } else {
+                        btn.classList.remove('active');
+                    }
+                });
+            }
+
+            sliderTotalWidth.addEventListener('input', (e) => {
+                numTotalWidth.value = e.target.value;
+                renderFacade();
+            });
+
+            numTotalWidth.addEventListener('input', (e) => {
+                let val = parseFloat(e.target.value);
+                if (!isNaN(val)) {
+                    val = Math.max(6.0, Math.min(35.0, val));
+                    sliderTotalWidth.value = val;
+                    renderFacade();
+                }
+            });
+
+            presetBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const val = parseFloat(btn.dataset.val);
+                    sliderTotalWidth.value = val;
+                    numTotalWidth.value = val;
+                    renderFacade();
+                });
+            });
+
+            selectDistMode.addEventListener('change', (e) => {
+                if (e.target.value === 'manual') {
+                    groupManualCount.style.display = 'block';
+                } else {
+                    groupManualCount.style.display = 'none';
+                }
+                renderFacade();
+            });
+
+            sliderManualCount.addEventListener('input', (e) => {
+                numManualCount.value = e.target.value;
+                valManualCount.textContent = e.target.value;
+                renderFacade();
+            });
+
+            numManualCount.addEventListener('input', (e) => {
+                sliderManualCount.value = e.target.value;
+                valManualCount.textContent = e.target.value;
+                renderFacade();
+            });
+
+            sliderFreeSpace.addEventListener('input', (e) => {
+                numFreeSpace.value = e.target.value;
+                valFreeSpace.textContent = `${parseFloat(e.target.value).toFixed(2)} m`;
+                renderFacade();
+            });
+
+            numFreeSpace.addEventListener('input', (e) => {
+                sliderFreeSpace.value = e.target.value;
+                valFreeSpace.textContent = `${parseFloat(e.target.value).toFixed(2)} m`;
+                renderFacade();
+            });
+
+            selectTheme.addEventListener('change', renderFacade);
+            toggleDimensions.addEventListener('change', renderFacade);
+            toggleBadges.addEventListener('change', renderFacade);
+            toggleLevels.addEventListener('change', renderFacade);
+            toggleHuman.addEventListener('change', renderFacade);
+            toggleAxes.addEventListener('change', renderFacade);
+            toggleGrid.addEventListener('change', renderFacade);
+            inputTitle1.addEventListener('input', renderFacade);
+            inputTitle2.addEventListener('input', renderFacade);
+
+            sliderDimSize.addEventListener('input', (e) => {
+                numDimSize.value = e.target.value;
+                valDimSize.textContent = `${parseFloat(e.target.value).toFixed(2)} m`;
+                renderFacade();
+            });
+
+            numDimSize.addEventListener('input', (e) => {
+                sliderDimSize.value = e.target.value;
+                valDimSize.textContent = `${parseFloat(e.target.value).toFixed(2)} m`;
+                renderFacade();
+            });
+
+            sliderFontSize.addEventListener('input', (e) => {
+                numFontSize.value = e.target.value;
+                valFontSize.textContent = `${parseFloat(e.target.value).toFixed(2)} m`;
+                renderFacade();
+            });
+
+            numFontSize.addEventListener('input', (e) => {
+                sliderFontSize.value = e.target.value;
+                valFontSize.textContent = `${parseFloat(e.target.value).toFixed(2)} m`;
+                renderFacade();
+            });
+
+            // Pan & Zoom
+            viewerContainer.addEventListener('mousedown', (e) => {
+                if (e.button === 0) {
+                    isPanning = true;
+                    startPanX = e.clientX - panX;
+                    startPanY = e.clientY - panY;
+                    viewerContainer.classList.add('panning');
+                }
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (isPanning) {
+                    panX = e.clientX - startPanX;
+                    panY = e.clientY - startPanY;
+                    updateViewportTransform();
+                }
+            });
+
+            window.addEventListener('mouseup', () => {
+                isPanning = false;
+                viewerContainer.classList.remove('panning');
+            });
+
+            // Gestos táctiles para móviles (Paneo 1 dedo, Zoom pellizco 2 dedos, Doble toque para centrar)
+            let touchStartDist = 0;
+            let touchStartZoom = 1.0;
+            let touchStartMidX = 0;
+            let touchStartMidY = 0;
+            let lastTapTime = 0;
+
+            viewerContainer.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    isPanning = true;
+                    const touch = e.touches[0];
+                    startPanX = touch.clientX - panX;
+                    startPanY = touch.clientY - panY;
+                    viewerContainer.classList.add('panning');
+
+                    // Detección de doble toque para ajustar vista
+                    const now = Date.now();
+                    if (now - lastTapTime < 300) {
+                        zoomLevel = 0.95;
+                        panX = 0;
+                        panY = 0;
+                        updateViewportTransform();
+                    }
+                    lastTapTime = now;
+                } else if (e.touches.length === 2) {
+                    isPanning = false;
+                    viewerContainer.classList.remove('panning');
+                    const t1 = e.touches[0];
+                    const t2 = e.touches[1];
+                    touchStartDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    touchStartZoom = zoomLevel;
+
+                    const rect = viewerContainer.getBoundingClientRect();
+                    touchStartMidX = (t1.clientX + t2.clientX) / 2 - rect.left - rect.width / 2;
+                    touchStartMidY = (t1.clientY + t2.clientY) / 2 - rect.top - rect.height / 2;
+                }
+            }, { passive: false });
+
+            window.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 1 && isPanning) {
+                    const touch = e.touches[0];
+                    panX = touch.clientX - startPanX;
+                    panY = touch.clientY - startPanY;
+                    updateViewportTransform();
+                } else if (e.touches.length === 2 && touchStartDist > 0) {
+                    if (e.cancelable) e.preventDefault();
+                    const t1 = e.touches[0];
+                    const t2 = e.touches[1];
+                    const currentDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                    const factor = currentDist / touchStartDist;
+                    const newZoom = Math.max(0.2, Math.min(5.0, touchStartZoom * factor));
+
+                    panX -= touchStartMidX * (factor - 1) * 0.35;
+                    panY -= touchStartMidY * (factor - 1) * 0.35;
+                    zoomLevel = newZoom;
+                    updateViewportTransform();
+                }
+            }, { passive: false });
+
+            window.addEventListener('touchend', (e) => {
+                if (e.touches.length === 0) {
+                    isPanning = false;
+                    viewerContainer.classList.remove('panning');
+                    touchStartDist = 0;
+                } else if (e.touches.length === 1) {
+                    isPanning = true;
+                    const touch = e.touches[0];
+                    startPanX = touch.clientX - panX;
+                    startPanY = touch.clientY - panY;
+                    touchStartDist = 0;
+                }
+            });
+
+            viewerContainer.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const zoomFactor = e.deltaY < 0 ? 1.12 : 0.89;
+                const newZoom = Math.max(0.2, Math.min(5.0, zoomLevel * zoomFactor));
+
+                const rect = viewerContainer.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left - rect.width / 2;
+                const mouseY = e.clientY - rect.top - rect.height / 2;
+
+                panX -= mouseX * (zoomFactor - 1);
+                panY -= mouseY * (zoomFactor - 1);
+                zoomLevel = newZoom;
+
+                updateViewportTransform();
+            }, { passive: false });
+
+            document.getElementById('tool-zoom-in').addEventListener('click', () => {
+                zoomLevel = Math.min(5.0, zoomLevel * 1.2);
+                updateViewportTransform();
+            });
+
+            document.getElementById('tool-zoom-out').addEventListener('click', () => {
+                zoomLevel = Math.max(0.2, zoomLevel / 1.2);
+                updateViewportTransform();
+            });
+
+            document.getElementById('tool-zoom-reset').addEventListener('click', () => {
+                zoomLevel = 1.0;
+                panX = 0;
+                panY = 0;
+                updateViewportTransform();
+            });
+
+            document.getElementById('tool-fit').addEventListener('click', () => {
+                zoomLevel = 0.95;
+                panX = 0;
+                panY = 0;
+                updateViewportTransform();
+            });
+
+            document.getElementById('btn-reset-view').addEventListener('click', () => {
+                zoomLevel = 1.0;
+                panX = 0;
+                panY = 0;
+                updateViewportTransform();
+            });
+
+            // Herramientas flotantes rápidas
+            const toolToggleCotas = document.getElementById('tool-toggle-cotas');
+            if (toolToggleCotas) {
+                toolToggleCotas.addEventListener('click', () => {
+                    toggleDimensions.checked = !toggleDimensions.checked;
+                    renderFacade();
+                });
+            }
+
+            const toolToggleTheme = document.getElementById('tool-toggle-theme');
+            if (toolToggleTheme) {
+                toolToggleTheme.addEventListener('click', () => {
+                    const themes = ['cad_dark', 'cad_white', 'blueprint', 'realistic'];
+                    let nextIdx = (themes.indexOf(selectTheme.value) + 1) % themes.length;
+                    selectTheme.value = themes[nextIdx];
+                    renderFacade();
+                });
+            }
+
+            // Rastreo de coordenadas CAD en tiempo real
+            viewerContainer.addEventListener('mousemove', (e) => {
+                if (!lastWorldBounds) return;
+                const svgElement = viewerSvgWrapper.querySelector('svg');
+                if (!svgElement) return;
+                try {
+                    const pt = svgElement.createSVGPoint();
+                    pt.x = e.clientX;
+                    pt.y = e.clientY;
+                    const ctm = svgElement.getScreenCTM();
+                    if (ctm) {
+                        const svgPt = pt.matrixTransform(ctm.inverse());
+                        const realX = svgPt.x + lastWorldBounds.minX;
+                        const realY = lastWorldBounds.maxY - svgPt.y;
+                        statusCoords.textContent = `X: ${realX >= 0 ? '+' : ''}${realX.toFixed(2)} m | Y: ${realY >= 0 ? '+' : ''}${realY.toFixed(2)} m`;
+                    }
+                } catch (err) {
+                    // ignorar errores de transformación puntual
+                }
+            });
+
+            // Descargas
+            function downloadDXF() {
+                const totalWidth = parseFloat(sliderTotalWidth.value);
+                const minFreeSpace = parseFloat(sliderFreeSpace.value);
+                const distributionMode = selectDistMode.value;
+                const manualCount = parseInt(sliderManualCount.value);
+                const titleLine1 = (inputTitle1.value || 'ASAMBLEA').trim().toUpperCase();
+                const titleLine2 = (inputTitle2.value || 'CRISTIANA').trim().toUpperCase();
+                const titleFontSize = parseFloat(sliderFontSize.value) || 0.20;
+
+                const dxfContent = engine.generateDXF({
+                    totalWidth,
+                    minFreeSpace,
+                    distributionMode,
+                    manualCount,
+                    titleLine1,
+                    titleLine2,
+                    titleFontSize
+                });
+
+                const blob = new Blob([dxfContent], { type: 'application/dxf' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Fachada_Iglesia_${totalWidth.toFixed(2)}m.dxf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+
+            document.getElementById('btn-export-dxf').addEventListener('click', downloadDXF);
+            document.getElementById('btn-download-dxf').addEventListener('click', downloadDXF);
+
+            document.getElementById('btn-download-svg').addEventListener('click', () => {
+                const totalWidth = parseFloat(sliderTotalWidth.value);
+                const svgElement = viewerSvgWrapper.querySelector('svg');
+                if (!svgElement) return;
+
+                const svgData = new XMLSerializer().serializeToString(svgElement);
+                const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Fachada_Iglesia_${totalWidth.toFixed(2)}m.svg`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
+
+            document.getElementById('btn-download-png').addEventListener('click', () => {
+                const totalWidth = parseFloat(sliderTotalWidth.value);
+                const svgElement = viewerSvgWrapper.querySelector('svg');
+                if (!svgElement) return;
+
+                const svgData = new XMLSerializer().serializeToString(svgElement);
+                const img = new Image();
+                const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+                const url = URL.createObjectURL(svgBlob);
+
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const targetWidth = 3000;
+                    const aspect = img.height / img.width;
+                    canvas.width = targetWidth;
+                    canvas.height = targetWidth * aspect;
+
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    URL.revokeObjectURL(url);
+
+                    const pngUrl = canvas.toDataURL('image/png');
+                    const a = document.createElement('a');
+                    a.href = pngUrl;
+                    a.download = `Fachada_Iglesia_${totalWidth.toFixed(2)}m_3000px.png`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                };
+                img.src = url;
+            });
+
+            document.getElementById('btn-print').addEventListener('click', () => {
+                const prevTheme = selectTheme.value;
+                selectTheme.value = 'cad_white';
+                renderFacade();
+
+                setTimeout(() => {
+                    window.print();
+                    selectTheme.value = prevTheme;
+                    renderFacade();
+                }, 200);
+            });
+
+            // Control móvil de navegación y apertura/cierre de sidebar
+            const sidebar = document.getElementById('sidebar');
+            const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
+            const btnCloseSidebar = document.getElementById('btn-close-sidebar');
+            const navBtnPlano = document.getElementById('nav-btn-plano');
+            const navBtnAjustes = document.getElementById('nav-btn-ajustes');
+            const navBtnMedidas = document.getElementById('nav-btn-medidas');
+            const navBtnDxf = document.getElementById('nav-btn-dxf');
+
+            const setMobileTab = (tab) => {
+                [navBtnPlano, navBtnAjustes, navBtnMedidas, navBtnDxf].forEach(b => b && b.classList.remove('active'));
+                if (tab === 'plano') {
+                    if (sidebar) sidebar.classList.remove('mobile-open');
+                    if (navBtnPlano) navBtnPlano.classList.add('active');
+                    if (btnToggleSidebar) btnToggleSidebar.classList.remove('active');
+                } else if (tab === 'ajustes') {
+                    if (sidebar) {
+                        sidebar.classList.add('mobile-open');
+                        sidebar.scrollTop = 0;
+                    }
+                    if (navBtnAjustes) navBtnAjustes.classList.add('active');
+                    if (btnToggleSidebar) btnToggleSidebar.classList.add('active');
+                } else if (tab === 'medidas') {
+                    if (sidebar) {
+                        sidebar.classList.add('mobile-open');
+                        const specsSection = document.getElementById('section-specs');
+                        if (specsSection) specsSection.scrollIntoView({ behavior: 'smooth' });
+                    }
+                    if (navBtnMedidas) navBtnMedidas.classList.add('active');
+                    if (btnToggleSidebar) btnToggleSidebar.classList.add('active');
+                }
+            };
+
+            if (btnToggleSidebar) {
+                btnToggleSidebar.addEventListener('click', () => {
+                    const isOpen = sidebar.classList.contains('mobile-open');
+                    setMobileTab(isOpen ? 'plano' : 'ajustes');
+                });
+            }
+
+            if (btnCloseSidebar) {
+                btnCloseSidebar.addEventListener('click', () => {
+                    setMobileTab('plano');
+                });
+            }
+
+            if (navBtnPlano) navBtnPlano.addEventListener('click', () => setMobileTab('plano'));
+            if (navBtnAjustes) navBtnAjustes.addEventListener('click', () => setMobileTab('ajustes'));
+            if (navBtnMedidas) navBtnMedidas.addEventListener('click', () => setMobileTab('medidas'));
+            if (navBtnDxf) {
+                navBtnDxf.addEventListener('click', () => {
+                    downloadDXF();
+                });
+            }
+
+            renderFacade();
+        });
+    </script>
+
+    <!-- BARRA DE NAVEGACIÓN INFERIOR PARA MÓVILES -->
+    <nav class="mobile-bottom-nav" id="mobile-bottom-nav">
+        <button class="mobile-nav-btn active" id="nav-btn-plano">
+            <span class="nav-btn-icon">📐</span>
+            <span class="nav-btn-text">Fachada</span>
+        </button>
+        <button class="mobile-nav-btn" id="nav-btn-ajustes">
+            <span class="nav-btn-icon">⚙️</span>
+            <span class="nav-btn-text">Ajustes</span>
+        </button>
+        <button class="mobile-nav-btn" id="nav-btn-medidas">
+            <span class="nav-btn-icon">📊</span>
+            <span class="nav-btn-text">Medidas</span>
+        </button>
+        <button class="mobile-nav-btn" id="nav-btn-dxf">
+            <span class="nav-btn-icon">💾</span>
+            <span class="nav-btn-text">DXF</span>
+        </button>
+    </nav>
+</body>
+</html>
