@@ -50,20 +50,53 @@ class FacadeEngine {
         };
     }
 
+    static boundedNumber(value, fallback, min, max) {
+        const number = (typeof value === 'number' || (typeof value === 'string' && value.trim())) ? Number(value) : NaN;
+        return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+    }
+
+    normalizeOptions(options = {}) {
+        const input = options && typeof options === 'object' ? options : {};
+        const bounded = FacadeEngine.boundedNumber;
+        const title = (value, fallback) => typeof value === 'string'
+            ? value.replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 20) : fallback;
+        return {
+            ...input,
+            totalWidth: bounded(input.totalWidth, 10.50, 6, 35),
+            minFreeSpace: bounded(input.minFreeSpace, 1.50, 1, 3),
+            manualCount: Math.floor(bounded(input.manualCount, 1, 0, 6)),
+            distributionMode: ['auto', 'manual', 'exact_150'].includes(input.distributionMode) ? input.distributionMode : 'auto',
+            dimFontSize: bounded(input.dimFontSize, 0.20, 0.14, 0.35),
+            titleFontSize: bounded(input.titleFontSize, 0.20, 0.10, 0.35),
+            titleLine1: title(input.titleLine1, 'ASAMBLEA'),
+            titleLine2: title(input.titleLine2, 'CRISTIANA')
+        };
+    }
+
+    static escapeXML(value) {
+        return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[char]));
+    }
+
+    getTitleGeometry(line1, line2, fontSize) {
+        const maxLength = Math.max(line1.length, line2.length, 1);
+        const boxW = +Math.max(1.95, maxLength * fontSize * 0.72 + 0.55).toFixed(2);
+        const boxH = +Math.max(0.74, fontSize * 2.80 + 0.18).toFixed(2);
+        return { boxW, boxH, boxY: +(6.47 + boxH / 2).toFixed(2),
+            line1Y: +(6.41 + fontSize * 0.58).toFixed(2), line2Y: +(6.41 - fontSize * 0.58).toFixed(2) };
+    }
+
     /**
      * Calcula la distribución paramétrica de ventanas según el ancho total ("largo").
      * Regla: Conserva el módulo central y añade 1 ventana cada 1.5 m libres entre ventanas.
      */
     calculateLayout(totalWidth, minFreeSpace = 1.50, distributionMode = 'auto', manualCount = 1) {
         const C = this.CONSTANTS;
-        totalWidth = Math.max(6.0, Number(totalWidth));
-        minFreeSpace = Math.max(0.5, Number(minFreeSpace));
+        ({ totalWidth, minFreeSpace, distributionMode, manualCount } = this.normalizeOptions({ totalWidth, minFreeSpace, distributionMode, manualCount }));
 
         const halfTotal = totalWidth / 2.0;
         // El paño del ala donde se centran las ventanas corresponde a la cota 3.29 m (media_1788703759354.png):
         // Se mide desde la cara exterior de la pilastra (1.96 m) hasta el muro exterior (halfTotal).
-        const wingSpan = +(halfTotal - C.PILASTER_OUTER_X).toFixed(3);
-        const wingWidth = wingSpan; // A 10.50 m: 5.25 - 1.96 = 3.29 m
+        const wingSpan = halfTotal - C.PILASTER_OUTER_X;
 
         // Ancho total exterior de la ventana incluyendo sus archivoltas/molduras:
         // 1.60 (vano) + 2 * 0.24 (molduras) = 2.08 m
@@ -83,7 +116,7 @@ class FacadeEngine {
             // Margen exterior (al muro) = Margen interior (a la columna) = (bayW - winTotalW) / 2
             // Separación libre entre ventanas = bayW - winTotalW = 2 * Margen
             // Se añade 1 ventana adicional cuando la separación libre resultante es >= minFreeSpace (1.50 m)
-            if (wingSpan < winTotalW + 0.30) {
+            if (wingSpan + 1e-9 < winTotalW + 0.30) {
                 numWindows = 0;
             } else {
                 let n = 1;
@@ -91,7 +124,7 @@ class FacadeEngine {
                     const nextN = n + 1;
                     const testBayW = wingSpan / nextN;
                     const testGap = testBayW - winTotalW;
-                    if (testGap >= minFreeSpace) {
+                    if (testGap + 1e-9 >= minFreeSpace) {
                         n = nextN;
                     } else {
                         break;
@@ -114,12 +147,12 @@ class FacadeEngine {
             // 1 ventana por ala:
             // Centrada exactamente en el centro de la cota 3.29 m del ala (entre pilastra x=1.96 y muro exterior x=halfTotal)
             // según plano original y media_1788703759354.png
-            const winCenter = +(C.PILASTER_OUTER_X + (wingSpan / 2.0)).toFixed(3);
+            const winCenter = (C.PILASTER_OUTER_X + wingSpan / 2.0);
             windowPositionsRight.push(winCenter);
 
             // Márgenes estrictamente simétricos e idénticos (al muro exterior y a la columna):
             // (3.29 - 2.08) / 2 = 0.605 m ≈ 0.61 m
-            const singleMargin = +((wingSpan - winTotalW) / 2.0).toFixed(2);
+            const singleMargin = ((wingSpan - winTotalW) / 2.0);
             actualOuterMargin = singleMargin;
             actualInnerMargin = singleMargin;
             actualFreeSpace = 0;
@@ -130,32 +163,33 @@ class FacadeEngine {
                 const totalWindowsW = numWindows * winTotalW;
                 const totalGapsW = (numWindows - 1) * actualFreeSpace;
                 const remainingMargins = wingSpan - totalWindowsW - totalGapsW;
-                actualOuterMargin = +(remainingMargins / 2.0).toFixed(2);
+                actualOuterMargin = (remainingMargins / 2.0);
                 actualInnerMargin = actualOuterMargin;
 
                 const startMouldingX = C.PILASTER_OUTER_X + actualInnerMargin;
                 for (let i = 0; i < numWindows; i++) {
                     const c = startMouldingX + winHalfOuter + i * (winTotalW + actualFreeSpace);
-                    windowPositionsRight.push(+c.toFixed(3));
+                    windowPositionsRight.push(c);
                 }
             } else {
                 // Modo modular centrado:
                 // Cada ventana se ubica en el centro exacto de su módulo en el paño del ala (wingSpan)
                 const bayW = wingSpan / numWindows;
-                actualFreeSpace = +(bayW - winTotalW).toFixed(2);
-                actualOuterMargin = +(actualFreeSpace / 2.0).toFixed(2);
+                actualFreeSpace = (bayW - winTotalW);
+                actualOuterMargin = (actualFreeSpace / 2.0);
                 actualInnerMargin = actualOuterMargin;
 
                 for (let i = 0; i < numWindows; i++) {
                     const c = C.PILASTER_OUTER_X + (i + 0.5) * bayW;
-                    windowPositionsRight.push(+c.toFixed(3));
+                    windowPositionsRight.push(c);
                 }
             }
         }
 
         // Simetría exacta para el ala izquierda (reflejo sobre el eje x = 0):
-        const windowPositionsLeft = windowPositionsRight.map(x => +(-x).toFixed(3)).reverse();
-        const isGeometryValid = (numWindows <= 1) || (actualFreeSpace >= (minFreeSpace - 0.01));
+        const windowPositionsLeft = windowPositionsRight.map(x => -x).reverse();
+        const isGeometryValid = actualOuterMargin >= -1e-9 && actualInnerMargin >= -1e-9
+            && (numWindows <= 1 || actualFreeSpace + 1e-9 >= minFreeSpace);
 
         return {
             totalWidth,
@@ -209,6 +243,7 @@ class FacadeEngine {
      * Genera el SVG vectorial de la fachada respetando fielmente las cotas CAD.
      */
     generateSVG(options = {}) {
+        options = this.normalizeOptions(options);
         const {
             totalWidth = this.CONSTANTS.DEFAULT_TOTAL_WIDTH,
             minFreeSpace = 1.50,
@@ -361,7 +396,7 @@ class FacadeEngine {
 
         let svg = '';
         svg += `<!-- SVG Generated by FacadeEngine for Asamblea Cristiana -->\n`;
-        svg += `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${worldWidth} ${worldHeight}" width="100%" height="100%" style="background-color: ${pal.bg}; shape-rendering: geometricPrecision; text-rendering: geometricPrecision;" class="facade-svg">\n`;
+        svg += `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${worldWidth} ${worldHeight}" width="100%" height="100%" style="background-color: ${pal.bg}; shape-rendering: geometricPrecision; text-rendering: geometricPrecision;" class="facade-svg" role="img" aria-label="Elevación frontal de la fachada">\n`;
         svg += `<defs>\n`;
         svg += `  <style>\n`;
         svg += `    .wall-line { stroke: ${pal.wallStroke}; stroke-width: 0.048; fill: none; stroke-linejoin: round; stroke-linecap: round; }\n`;
@@ -560,15 +595,7 @@ class FacadeEngine {
 
         // 6. Rótulo institucional "ASAMBLEA CRISTIANA"
         svg += `<g id="layer-title">\n`;
-        const maxLen = Math.max(titleLine1.length, titleLine2.length, 1);
-        const approxTextWidth = maxLen * titleFontSize * 0.72;
-        const boxW = +(Math.max(1.95, approxTextWidth + 0.55)).toFixed(2);
-        const boxH = +(Math.max(0.74, titleFontSize * 2.80 + 0.18)).toFixed(2);
-        const boxCenterY = 6.47;
-        const boxY = +(boxCenterY + boxH / 2.0).toFixed(2);
-        const textCenterY = boxCenterY - 0.06;
-        const line1Y = +(textCenterY + titleFontSize * 0.58).toFixed(2);
-        const line2Y = +(textCenterY - titleFontSize * 0.58).toFixed(2);
+        const { boxW, boxH, boxY, line1Y, line2Y } = this.getTitleGeometry(titleLine1, titleLine2, titleFontSize);
 
         // Placa arquitectónica con doble filete y remaches de fijación (fondo 100% opaco y limpio)
         svg += `  <rect x="${toSvgX(-boxW/2)}" y="${toSvgY(boxY)}" width="${boxW}" height="${boxH}" stroke="${pal.textTitle}" stroke-width="0.028" fill="${pal.wallFill}" opacity="1"/>\n`;
@@ -578,8 +605,8 @@ class FacadeEngine {
         svg += `  <circle cx="${toSvgX(boxW/2 - dotOff)}" cy="${toSvgY(boxY - dotOff)}" r="0.018" fill="${pal.textTitle}"/>\n`;
         svg += `  <circle cx="${toSvgX(-boxW/2 + dotOff)}" cy="${toSvgY(boxY - boxH + dotOff)}" r="0.018" fill="${pal.textTitle}"/>\n`;
         svg += `  <circle cx="${toSvgX(boxW/2 - dotOff)}" cy="${toSvgY(boxY - boxH + dotOff)}" r="0.018" fill="${pal.textTitle}"/>\n`;
-        svg += `  <text x="${toSvgX(0)}" y="${toSvgY(line1Y)}" dominant-baseline="central" alignment-baseline="central" text-anchor="middle" class="title-text">${titleLine1}</text>\n`;
-        svg += `  <text x="${toSvgX(0)}" y="${toSvgY(line2Y)}" dominant-baseline="central" alignment-baseline="central" text-anchor="middle" class="title-text">${titleLine2}</text>\n`;
+        svg += `  <text x="${toSvgX(0)}" y="${toSvgY(line1Y)}" dominant-baseline="central" alignment-baseline="central" text-anchor="middle" class="title-text">${FacadeEngine.escapeXML(titleLine1)}</text>\n`;
+        svg += `  <text x="${toSvgX(0)}" y="${toSvgY(line2Y)}" dominant-baseline="central" alignment-baseline="central" text-anchor="middle" class="title-text">${FacadeEngine.escapeXML(titleLine2)}</text>\n`;
         svg += `</g>\n\n`;
 
         // 7. Ventanas góticas
@@ -864,7 +891,7 @@ class FacadeEngine {
             // 4. Cadena horizontal superior de coronación (y = 8.35 m):
             // - Tramo izquierdo: del borde del ala a la pilastra izquierda (3.29 a 10.50m)
             // - Directriz pilastra izquierda: 0.28
-            // - Tramo central: 3.30 entre pilastras
+            // - Tramo central: 3.40 entre pilastras
             // - Directriz pilastra derecha: 0.33
             // - Tramo derecho: de la pilastra derecha al borde del ala (3.29 a 10.50m)
             const topDimY = 8.35;
@@ -879,8 +906,8 @@ class FacadeEngine {
             svg += drawDot(-C.PILASTER_INNER_X, topDimY);
             svg += drawLeader(-((C.PILASTER_OUTER_X + C.PILASTER_INNER_X) / 2.0), topDimY, -1.60, topDimY + 0.35, -1.20, '0.26');
 
-            // Tramo central entre pilastras (3.30)
-            svg += drawHorizDim(-C.PILASTER_INNER_X, C.PILASTER_INNER_X, topDimY, '3.30');
+            // Tramo central entre pilastras (3.40)
+            svg += drawHorizDim(-C.PILASTER_INNER_X, C.PILASTER_INNER_X, topDimY, '3.40');
 
             // Tramo pilastra derecha (ancho exacto 0.26 m, según media_1788705305377.png)
             svg += `  <line x1="${toSvgX(C.PILASTER_INNER_X)}" y1="${toSvgY(topDimY)}" x2="${toSvgX(C.PILASTER_OUTER_X)}" y2="${toSvgY(topDimY)}" class="dim-line"/>\n`;
@@ -1093,6 +1120,7 @@ class FacadeEngine {
      * Replica exactamente los muros, pilastras, molduras y cotas en capas AutoCAD.
      */
     generateDXF(options = {}) {
+        options = this.normalizeOptions(options);
         const {
             totalWidth = this.CONSTANTS.DEFAULT_TOTAL_WIDTH,
             minFreeSpace = 1.50,
@@ -1120,10 +1148,13 @@ class FacadeEngine {
         dxf += '0\nSECTION\n2\nENTITIES\n';
 
         const dxfLine = (x1, y1, x2, y2, layer = 'MUROS') => {
+            if (layer === 'COTAS' && options.showDimensions === false) return '';
             return `0\nLINE\n8\n${layer}\n10\n${x1.toFixed(4)}\n20\n${y1.toFixed(4)}\n30\n0.0\n11\n${x2.toFixed(4)}\n21\n${y2.toFixed(4)}\n31\n0.0\n`;
         };
 
         const dxfText = (x, y, height, text, layer = 'TEXTOS', rot = 0) => {
+            if (layer === 'COTAS' && options.showDimensions === false) return '';
+            text = String(text).replace(/[\r\n\x00]/g, ' ');
             return `0\nTEXT\n8\n${layer}\n10\n${x.toFixed(4)}\n20\n${y.toFixed(4)}\n30\n0.0\n40\n${height.toFixed(4)}\n1\n${text}\n50\n${rot.toFixed(1)}\n`;
         };
 
@@ -1181,7 +1212,7 @@ class FacadeEngine {
             const arch = this.getPointedArchGeometry(0, spanR, C.DOOR_HEIGHT, r);
             const angStart1 = Math.atan2(0, (-spanR / 2) - arch.c1X) * (180 / Math.PI);
             const angApex1 = Math.atan2(arch.apexY - C.DOOR_HEIGHT, 0 - arch.c1X) * (180 / Math.PI);
-            dxf += dxfArc(arch.c1X, C.DOOR_HEIGHT, r, (angStart1 + 360) % 360, (angApex1 + 360) % 360, 'ARCOS');
+            dxf += dxfArc(arch.c1X, C.DOOR_HEIGHT, r, (angApex1 + 360) % 360, (angStart1 + 360) % 360, 'ARCOS');
 
             const angApex2 = Math.atan2(arch.apexY - C.DOOR_HEIGHT, 0 - arch.c2X) * (180 / Math.PI);
             const angEnd2 = Math.atan2(0, (spanR / 2) - arch.c2X) * (180 / Math.PI);
@@ -1227,7 +1258,7 @@ class FacadeEngine {
                 const aGeom = this.getPointedArchGeometry(cx, spanR, C.WINDOW_SPRING_Y, r);
                 const aStart1 = Math.atan2(0, (cx - spanR / 2) - aGeom.c1X) * (180 / Math.PI);
                 const aApex1 = Math.atan2(aGeom.apexY - C.WINDOW_SPRING_Y, cx - aGeom.c1X) * (180 / Math.PI);
-                dxf += dxfArc(aGeom.c1X, C.WINDOW_SPRING_Y, r, (aStart1 + 360) % 360, (aApex1 + 360) % 360, 'ARCOS');
+                dxf += dxfArc(aGeom.c1X, C.WINDOW_SPRING_Y, r, (aApex1 + 360) % 360, (aStart1 + 360) % 360, 'ARCOS');
 
                 const aApex2 = Math.atan2(aGeom.apexY - C.WINDOW_SPRING_Y, cx - aGeom.c2X) * (180 / Math.PI);
                 const aEnd2 = Math.atan2(0, (cx + spanR / 2) - aGeom.c2X) * (180 / Math.PI);
@@ -1242,19 +1273,12 @@ class FacadeEngine {
             dxf += dxfLine(cx - outerSpan / 2, C.WINDOW_SILL_Y, cx + outerSpan / 2, C.WINDOW_SILL_Y, 'MUROS');
         });
 
-        // 6. Textos
-        const dxfFontSize = options.titleFontSize || 0.20;
-        const len1 = titleLine1.length;
-        const len2 = titleLine2.length;
-        const startX1 = -(len1 * dxfFontSize * 0.32);
-        const startX2 = -(len2 * dxfFontSize * 0.32);
-        dxf += dxfText(startX1, 6.22, dxfFontSize, titleLine1, 'TEXTOS');
-        dxf += dxfText(startX2, 5.98, dxfFontSize, titleLine2, 'TEXTOS');
-
-        // Marco perimetral del cartel en capa TEXTOS
-        const dBoxW = Math.max(1.35, Math.max(len1, len2) * dxfFontSize * 0.70 + 0.25);
-        const dBoxH = dxfFontSize * 2.3 + 0.10;
-        const dBoxY = 6.42;
+        // 6. Rótulo: el marco y los centros de texto coinciden con el SVG.
+        const { boxW: dBoxW, boxH: dBoxH, boxY: dBoxY, line1Y, line2Y } = this.getTitleGeometry(titleLine1, titleLine2, titleFontSize);
+        const centeredTitle = (line, y) => dxfText(0, y, titleFontSize, line, 'TEXTOS')
+            + `72\n1\n73\n2\n11\n0.0000\n21\n${y.toFixed(4)}\n31\n0.0\n`;
+        dxf += centeredTitle(titleLine1, line1Y);
+        dxf += centeredTitle(titleLine2, line2Y);
         dxf += dxfLine(-dBoxW/2, dBoxY, dBoxW/2, dBoxY, 'TEXTOS');
         dxf += dxfLine(dBoxW/2, dBoxY, dBoxW/2, dBoxY - dBoxH, 'TEXTOS');
         dxf += dxfLine(dBoxW/2, dBoxY - dBoxH, -dBoxW/2, dBoxY - dBoxH, 'TEXTOS');
@@ -1273,9 +1297,9 @@ class FacadeEngine {
         dxf += dxfLine(-((C.PILASTER_OUTER_X + C.PILASTER_INNER_X) / 2.0), topDimY, -1.60, topDimY + 0.35, 'COTAS');
         dxf += dxfLine(-1.60, topDimY + 0.35, -1.20, topDimY + 0.35, 'COTAS');
         dxf += dxfText(-1.50, topDimY + 0.40, 0.16, '0.26', 'COTAS');
-        // Tramo central 3.30
+        // Tramo central 3.40
         dxf += dxfLine(-C.PILASTER_INNER_X, topDimY, C.PILASTER_INNER_X, topDimY, 'COTAS');
-        dxf += dxfText(-0.25, topDimY + 0.08, 0.18, '3.30', 'COTAS');
+        dxf += dxfText(-0.25, topDimY + 0.08, 0.18, '3.40', 'COTAS');
         // Pilastra derecha y directriz 0.26
         dxf += dxfLine(C.PILASTER_INNER_X, topDimY, C.PILASTER_OUTER_X, topDimY, 'COTAS');
         dxf += dxfLine((C.PILASTER_INNER_X + C.PILASTER_OUTER_X) / 2.0, topDimY, 1.62, topDimY + 0.35, 'COTAS');

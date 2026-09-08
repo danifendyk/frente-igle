@@ -1,0 +1,10 @@
+{
+  "name": "estudio-de-fachadas",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Editor local de fachadas de Asamblea Cristiana",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "check": "node --check facade_engine.js && node --check app.js"
+  }
+}
