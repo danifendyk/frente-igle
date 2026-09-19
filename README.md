@@ -1,12 +1,13 @@
 # Estudio de fachadas · Asamblea Cristiana
 
-Editor paramétrico del frente de una iglesia. Conserva el módulo central y distribuye las ventanas de forma simétrica al modificar el ancho del terreno.
+Editor paramétrico del frente de una iglesia. La geometría cambia según una tabla de proporciones definida para anchos interiores de 6 a 10 m.
 
 ## Uso
 
 Abre `index.html` en un navegador actual. No necesita instalación, conexión a Internet ni servicios externos.
 
-- Ajusta el ancho entre 6 y 35 m, en pasos de 0,05 m, o elige un ancho de referencia.
+- Ajusta el ancho interior entre 6 y 10 m, en pasos de 0,05 m, o elige una de las cinco filas de referencia. El ancho exterior suma siempre 0,40 m.
+- Las alturas, la puerta, las ventanas y el cuerpo central sobresaliente se interpolan entre las filas de la tabla. El alto de puertas y ventanas se mide desde su base hasta la punta del arco.
 - Selecciona distribución automática, separación fija o cantidad manual. El aviso indica si la distribución cabe y cumple la separación elegida.
 - Abre **Presentación y capas** para cambiar el tema, las cotas, la cuadrícula y el rótulo.
 - Abre **Ficha de medidas** para consultar márgenes y dimensiones.
@@ -31,4 +32,6 @@ En el plano: arrastra para mover, usa la rueda para ampliar o reducir y haz dobl
 
 Con Node.js instalado, ejecuta `npm test` para comprobar simetría, límites, arcos, rótulos y cotas; `npm run check` verifica la sintaxis. No es necesario instalar paquetes.
 
-Las dimensiones del módulo central están definidas en `FacadeEngine.CONSTANTS`. La separación se mide entre las caras exteriores de las molduras (ventana de 2,08 m en total). El modo automático divide cada ala en módulos iguales; agrega ventanas cuando la nueva distribución cumple la separación mínima. El modo de separación fija conserva esa cantidad y centra el conjunto con la distancia seleccionada entre ventanas.
+Las cinco filas originales están en `FacadeEngine.RELATION_TABLE`. Los valores intermedios usan interpolación lineal por tramos, por lo que cada fila de 6, 7, 8, 9 y 10 m se conserva exactamente. La altura mínima gobierna las alas laterales; la máxima gobierna el remate central; su diferencia define el sobresaliente. Las molduras usan provisionalmente 0,19 m.
+
+La separación de ventanas se mide entre las caras exteriores de las molduras. El modo automático divide cada ala en módulos iguales; agrega ventanas cuando la nueva distribución cumple la separación mínima. El modo de separación fija conserva esa cantidad y centra el conjunto con la distancia seleccionada entre ventanas.

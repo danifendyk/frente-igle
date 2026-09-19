@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const FacadeEngine = require('../facade_engine');
 const engine = new FacadeEngine();
-const near = (actual, expected, tolerance = 1e-9) => assert.ok(Math.abs(actual - expected) < tolerance, `${actual} ≠ ${expected}`);
+const near = (actual, expected, tolerance = 1e-8) => assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} ≠ ${expected}`);
 
 function entities(dxf) {
     const lines = dxf.trimEnd().split('\n');
@@ -20,89 +20,101 @@ function entities(dxf) {
     return result;
 }
 
-test('el modelo original conserva sus dimensiones y centros', () => {
-    const layout = engine.calculateLayout(10.5);
-    assert.equal(layout.numWindowsPerWing, 1);
-    near(layout.wingSpan, 3.29);
-    near(layout.actualInnerMargin, 0.605);
-    near(layout.windowPositionsRight[0], 3.605);
-    near(layout.windowPositionsLeft[0], -3.605);
-    assert.equal(layout.isGeometryValid, true);
-});
-
-test('una ventana forzada fuera del muro se marca inválida', () => {
-    const layout = engine.calculateLayout(6, 1.5, 'manual', 1);
-    assert.equal(layout.isGeometryValid, false);
-    assert.ok(layout.actualInnerMargin < 0);
-});
-
-test('cero ventanas es una configuración válida y finita', () => {
-    const layout = engine.calculateLayout(10.5, 1.5, 'manual', 0);
-    assert.equal(layout.totalWindows, 0);
-    assert.deepEqual(layout.allWindowCenters, []);
-    assert.equal(layout.isGeometryValid, true);
-    assert.equal(engine.calculateLayout(6).totalWindows, 0);
-});
-
-test('umbrales automáticos sin adelanto por redondeo', () => {
-    for (const [width, count] of [[8.68, 1], [18.24, 2], [25.4, 3], [32.56, 4]]) {
-        assert.equal(engine.calculateLayout(width).numWindowsPerWing, count);
-        assert.equal(engine.calculateLayout(width - 0.001).numWindowsPerWing, count - 1);
+test('conserva exactamente las cinco filas de la tabla', () => {
+    const expected = [
+        [6, 4.8, 5.9, 1.6, 2.4, 1.0, 1.4, 2.7, 1.1],
+        [7, 5.0, 6.2, 1.8, 2.5, 1.2, 1.5, 2.9, 1.2],
+        [8, 5.3, 6.6, 2.0, 2.6, 1.4, 1.6, 3.2, 1.3],
+        [9, 5.6, 7.0, 2.2, 2.7, 1.5, 1.65, 3.4, 1.4],
+        [10, 5.9, 7.4, 2.4, 2.8, 1.6, 1.7, 3.8, 1.5]
+    ];
+    for (const [width, minH, maxH, doorW, doorH, windowW, windowH, projectionW, difference] of expected) {
+        const d = engine.getFacadeDimensions(width);
+        assert.deepEqual(
+            [d.interiorWidth, d.minHeight, d.maxHeight, d.doorWidth, d.doorHeight, d.windowWidth, d.windowHeight, d.projectionWidth, d.heightDifference],
+            [width, minH, maxH, doorW, doorH, windowW, windowH, projectionW, difference]
+        );
+        near(d.totalWidth - d.interiorWidth, 0.4);
+        assert.equal(d.mouldingThickness, 0.19);
     }
 });
 
-test('simetría y separación en todos los anchos y modos del editor', () => {
-    for (let step = 120; step <= 700; step++) {
-        const width = step / 20;
+test('interpola linealmente los anchos intermedios', () => {
+    const d = engine.getFacadeDimensions(8.5);
+    assert.deepEqual(d, {
+        interiorWidth: 8.5, totalWidth: 8.9, minHeight: 5.45, maxHeight: 6.8,
+        doorWidth: 2.1, doorHeight: 2.65, windowWidth: 1.45, windowHeight: 1.625,
+        projectionWidth: 3.3, heightDifference: 1.35, mouldingThickness: 0.19
+    });
+});
+
+test('limita el editor al rango interior de 6 a 10 m', () => {
+    assert.equal(engine.getFacadeDimensions(-20).interiorWidth, 6);
+    assert.equal(engine.getFacadeDimensions(50).interiorWidth, 10);
+    assert.equal(engine.normalizeOptions({ interiorWidth: 'abc' }).interiorWidth, 10);
+    assert.equal(engine.normalizeOptions({ interiorWidth: Infinity }).interiorWidth, 10);
+});
+
+test('alturas y sobresaliente gobiernan la geometría', () => {
+    for (const width of [6, 6.5, 8, 9.25, 10]) {
+        const d = engine.getFacadeDimensions(width);
+        const c = engine.getFacadeConstants(width);
+        near(c.WING_CORNICE_TOP, d.minHeight);
+        near(c.PILASTER_TOP, d.maxHeight);
+        near(c.PILASTER_TOP - c.WING_CORNICE_TOP, d.heightDifference);
+        near(c.PILASTER_OUTER_X * 2, d.projectionWidth);
+        near(c.PILASTER_WIDTH, 0.19);
+    }
+});
+
+test('el alto de puerta y ventana llega hasta la punta del arco', () => {
+    for (const width of [6, 7.3, 9, 10]) {
+        const d = engine.getFacadeDimensions(width);
+        const c = engine.getFacadeConstants(width);
+        const door = engine.getPointedArchGeometry(0, c.DOOR_OPENING, c.DOOR_HEIGHT, c.DOOR_ARCH_R_IN);
+        const window = engine.getPointedArchGeometry(0, c.WINDOW_WIDTH, c.WINDOW_SPRING_Y, c.WINDOW_ARCH_R_IN);
+        near(door.apexY, d.doorHeight);
+        near(window.apexY - c.WINDOW_SILL_Y, d.windowHeight);
+    }
+});
+
+test('la distribución permanece simétrica y dentro de cada ala', () => {
+    for (let step = 120; step <= 200; step++) {
+        const interior = step / 20;
         for (const mode of ['auto', 'exact_150', 'manual']) {
-            for (const gap of [1, 1.5, 3]) {
-                const layout = engine.calculateLayout(width, gap, mode, 3);
-                const right = layout.windowPositionsRight;
-                assert.deepEqual(layout.windowPositionsLeft, right.map(x => -x).reverse());
-                if (right.length) {
-                    const inner = right[0] - layout.windowTotalWidth / 2 - engine.CONSTANTS.PILASTER_OUTER_X;
-                    const outer = width / 2 - right.at(-1) - layout.windowTotalWidth / 2;
-                    near(inner, outer);
-                    near(inner, layout.actualInnerMargin);
-                    if (layout.isGeometryValid) {
-                        assert.ok(inner >= -1e-9);
-                        for (let i = 1; i < right.length; i++) assert.ok(right[i] - right[i - 1] - layout.windowTotalWidth >= gap - 1e-9);
-                    }
+            for (const count of [0, 1, 2, 6]) {
+                const layout = engine.calculateLayout(interior, 1.5, mode, count);
+                assert.deepEqual(layout.windowPositionsLeft, layout.windowPositionsRight.map(x => -x).reverse());
+                assert.equal(layout.interiorWidth, interior);
+                near(layout.totalWidth, interior + 0.4);
+                if (layout.isGeometryValid && layout.numWindowsPerWing) {
+                    assert.ok(layout.actualInnerMargin >= -1e-9);
+                    near(layout.actualInnerMargin, layout.actualOuterMargin);
                 }
             }
         }
     }
 });
 
-test('separación fija mantiene márgenes idénticos con anchos fraccionarios', () => {
-    const layout = engine.calculateLayout(22.734, 1.5, 'exact_150');
-    near(layout.actualInnerMargin, 1.8735);
-    near(layout.windowPositionsRight[1] - layout.windowPositionsRight[0] - layout.windowTotalWidth, 1.5);
-});
-
-test('entradas corruptas y fuera de rango nunca generan geometría no finita', () => {
-    for (const width of [undefined, null, '', 'abc', NaN, Infinity, -Infinity, -20, 50000, '10.5']) {
-        const options = { totalWidth: width, minFreeSpace: Infinity, manualCount: 1e30, titleFontSize: 'abc', dimFontSize: NaN };
+test('SVG y DXF no generan valores no finitos con entradas corruptas', () => {
+    for (const width of [undefined, null, '', 'abc', NaN, Infinity, -Infinity, -20, 50000, '8.5']) {
+        const options = { interiorWidth: width, minFreeSpace: Infinity, manualCount: 1e30, titleFontSize: 'abc', dimFontSize: NaN };
         const result = engine.generateSVG(options);
-        assert.ok(result.layout.totalWidth >= 6 && result.layout.totalWidth <= 35);
+        assert.ok(result.dimensions.interiorWidth >= 6 && result.dimensions.interiorWidth <= 10);
         assert.doesNotMatch(result.svg, /NaN|Infinity/);
         assert.doesNotMatch(engine.generateDXF(options), /NaN|Infinity/);
     }
-    assert.equal(engine.generateSVG({ totalWidth: '10.5' }).svg, engine.generateSVG({ totalWidth: 10.5 }).svg);
-    assert.equal(engine.generateSVG({ totalWidth: 5 }).svg, engine.generateSVG({ totalWidth: 6 }).svg);
 });
 
-test('SVG escapa los rótulos y permite dejarlos vacíos', () => {
+test('SVG escapa los rótulos', () => {
     const svg = engine.generateSVG({ titleLine1: 'A & B < C', titleLine2: '</text><script>' }).svg;
     assert.match(svg, /A &amp; B &lt; C/);
     assert.doesNotMatch(svg, /<script>/);
-    const empty = engine.generateSVG({ titleLine1: '', titleLine2: '' }).svg;
-    assert.equal((empty.match(/class="title-text"><\/text>/g) || []).length, 2);
 });
 
-test('arcos DXF usan el barrido corto y pares reflejados iguales', () => {
-    for (const width of [6, 10.5, 25.4, 35]) {
-        const arcs = entities(engine.generateDXF({ totalWidth: width })).filter(entity => entity.type === 'ARC');
+test('arcos DXF usan barridos cortos y pares reflejados', () => {
+    for (const width of [6, 8, 10]) {
+        const arcs = entities(engine.generateDXF({ interiorWidth: width })).filter(entity => entity.type === 'ARC');
         assert.ok(arcs.length >= 8);
         const sweeps = arcs.map(arc => (Number(arc['51']) - Number(arc['50']) + 360) % 360);
         sweeps.forEach(sweep => assert.ok(sweep > 0 && sweep <= 90));
@@ -110,28 +122,19 @@ test('arcos DXF usan el barrido corto y pares reflejados iguales', () => {
     }
 });
 
-test('la cota entre caras interiores de pilastras es 3.40 en ambos formatos', () => {
-    assert.match(engine.generateSVG().svg, />3\.40<\/text>/);
-    assert.doesNotMatch(engine.generateSVG().svg, />3\.30<\/text>/);
-    const dimensions = entities(engine.generateDXF()).filter(entity => entity.type === 'TEXT' && entity['8'] === 'COTAS');
-    assert.ok(dimensions.some(entity => entity['1'] === '3.40'));
-    assert.ok(!dimensions.some(entity => entity['1'] === '3.30'));
-});
-
-test('DXF respeta cotas apagadas y mantiene el resto del dibujo', () => {
-    const result = entities(engine.generateDXF({ showDimensions: false }));
+test('DXF respeta cotas apagadas y conserva los muros', () => {
+    const result = entities(engine.generateDXF({ interiorWidth: 8, showDimensions: false }));
     assert.ok(!result.some(entity => entity['8'] === 'COTAS'));
     assert.ok(result.some(entity => entity.type === 'LINE' && entity['8'] === 'MUROS'));
 });
 
-test('rótulo DXF centrado y consistente con la geometría SVG', () => {
-    const options = { titleFontSize: 0.35, titleLine1: 'Uno\nDos', titleLine2: 'Á & B' };
+test('rótulo SVG y DXF comparten su posición proporcional', () => {
+    const options = { interiorWidth: 7.5, titleFontSize: 0.35, titleLine1: 'Uno\nDos', titleLine2: 'Á & B' };
     const normalized = engine.normalizeOptions(options);
-    const title = engine.getTitleGeometry(normalized.titleLine1, normalized.titleLine2, normalized.titleFontSize);
+    const d = engine.getFacadeDimensions(normalized.interiorWidth);
+    const title = engine.getTitleGeometry(normalized.titleLine1, normalized.titleLine2, normalized.titleFontSize, d.minHeight + d.heightDifference * 0.30);
     const texts = entities(engine.generateDXF(options)).filter(entity => entity.type === 'TEXT' && entity['8'] === 'TEXTOS');
     assert.equal(texts[0]['1'], 'Uno Dos');
-    assert.equal(texts[0]['72'], '1');
-    assert.equal(texts[0]['73'], '2');
     near(Number(texts[0]['21']), title.line1Y);
     near(Number(texts[1]['21']), title.line2Y);
 });

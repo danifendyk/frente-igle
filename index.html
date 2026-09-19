@@ -52,32 +52,30 @@
             <div class="panel-section">
                 <div class="section-title">
                     <span>Ancho del frente</span>
-                    <span class="badge-counter" id="badge-total-width">10.50 m</span>
+                    <span class="badge-counter" id="badge-total-width">Interior 10,00 m</span>
                 </div>
                 
                 <div class="control-group">
                     <div class="control-label">
-                        <span>Ancho total del terreno</span>
-                        <span class="val-tag" id="val-total-width">10.50 m</span>
+                        <span>Ancho interior</span>
+                        <span class="val-tag" id="val-total-width">10,00 m</span>
                     </div>
                     <div class="input-slider-row">
-                        <input aria-label="Ancho total del terreno" type="range" id="slider-total-width" min="6.0" max="35.0" step="0.05" value="10.50">
-                        <input aria-label="Ancho total del terreno" type="number" id="num-total-width" min="6.0" max="35.0" step="0.05" value="10.50">
+                        <input aria-label="Ancho interior" type="range" id="slider-total-width" min="6.0" max="10.0" step="0.05" value="10.00">
+                        <input aria-label="Ancho interior" type="number" id="num-total-width" min="6.0" max="10.0" step="0.05" value="10.00">
                     </div>
+                    <p class="derived-measure">Ancho exterior: <strong id="val-exterior-width">10,40 m</strong> · incluye 0,40 m de muros</p>
                 </div>
 
                 <div class="control-label" style="margin-top: 0.8rem; font-size: 0.75rem; color: var(--text-secondary);">
                     <span>Anchos de referencia</span>
                 </div>
                 <div class="preset-buttons">
-                    <button class="btn-preset active" data-val="10.50">10.50 m</button>
-                    <button class="btn-preset" data-val="12.00">12.00 m</button>
-                    <button class="btn-preset" data-val="14.00">14.00 m</button>
-                    <button class="btn-preset" data-val="16.00">16.00 m</button>
-                    <button class="btn-preset" data-val="18.00">18.00 m</button>
-                    <button class="btn-preset" data-val="22.20">22.20 m</button>
-                    <button class="btn-preset" data-val="25.00">25.00 m</button>
-                    <button class="btn-preset" data-val="30.00">30.00 m</button>
+                    <button class="btn-preset" data-val="6.00">6 m</button>
+                    <button class="btn-preset" data-val="7.00">7 m</button>
+                    <button class="btn-preset" data-val="8.00">8 m</button>
+                    <button class="btn-preset" data-val="9.00">9 m</button>
+                    <button class="btn-preset active" data-val="10.00">10 m</button>
                 </div>
             </div>
 
@@ -217,12 +215,32 @@
                 <table class="specs-table">
                     <tbody>
                         <tr>
-                            <td class="label-col">Ancho total del frente:</td>
-                            <td class="val-col" id="spec-total-width">10.50 m</td>
+                            <td class="label-col">Ancho interior:</td>
+                            <td class="val-col" id="spec-interior-width">10,00 m</td>
                         </tr>
                         <tr>
-                            <td class="label-col">Módulo portal central (fijo):</td>
-                            <td class="val-col">2.92 m</td>
+                            <td class="label-col">Ancho exterior:</td>
+                            <td class="val-col" id="spec-total-width">10,40 m</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">Altura mínima / máxima:</td>
+                            <td class="val-col" id="spec-heights">5,90 / 7,40 m</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">Puerta (ancho × alto total):</td>
+                            <td class="val-col" id="spec-door">2,40 × 2,80 m</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">Ventana (ancho × alto total):</td>
+                            <td class="val-col" id="spec-window">1,60 × 1,70 m</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">Cuerpo sobresaliente:</td>
+                            <td class="val-col" id="spec-projection">3,80 m · +1,50 m</td>
+                        </tr>
+                        <tr>
+                            <td class="label-col">Espesor de molduras:</td>
+                            <td class="val-col" id="spec-moulding">0,19 m</td>
                         </tr>
                         <tr>
                             <td class="label-col">Paño útil de cada ala:</td>
@@ -248,28 +266,30 @@
                             <td class="label-col">Cota paño del ala (izq/der):</td>
                             <td class="val-col" id="spec-top-wing">3.29 m</td>
                         </tr>
-                        <tr>
-                            <td class="label-col">Apertura central superior:</td>
-                            <td class="val-col">3.40 m (1.70 + 1.70 m)</td>
-                        </tr>
-                        <tr>
-                            <td class="label-col">Pilastras superiores:</td>
-                            <td class="val-col">0.26 m (ancho) | Long. 3.62 m</td>
-                        </tr>
-                        <tr>
-                            <td class="label-col">Base e inicio pilastras:</td>
-                            <td class="val-col">Base +4.08 m | Remate +7.70 m</td>
-                        </tr>
-                        <tr>
-                            <td class="label-col">Remate pilastra (der/izq):</td>
-                            <td class="val-col">1.40 m / 0.20 + 1.20 m</td>
-                        </tr>
-                        <tr>
-                            <td class="label-col">Altura máxima remate:</td>
-                            <td class="val-col">7.70 m</td>
-                        </tr>
                     </tbody>
                 </table>
+            </details>
+
+            <details class="panel-section">
+                <summary class="section-title">
+                    <span>Tabla de proporciones</span>
+                </summary>
+                <p class="table-note">Los anchos intermedios se calculan proporcionalmente entre estas filas. Todas las medidas están en metros.</p>
+                <div class="relation-table-wrap">
+                    <table class="relation-table">
+                        <thead>
+                            <tr><th>Interior</th><th>Alturas</th><th>Puerta</th><th>Ventana</th><th>Sobresaliente</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>6,00</td><td>4,80 / 5,90</td><td>1,60 × 2,40</td><td>1,00 × 1,40</td><td>2,70 / +1,10</td></tr>
+                            <tr><td>7,00</td><td>5,00 / 6,20</td><td>1,80 × 2,50</td><td>1,20 × 1,50</td><td>2,90 / +1,20</td></tr>
+                            <tr><td>8,00</td><td>5,30 / 6,60</td><td>2,00 × 2,60</td><td>1,40 × 1,60</td><td>3,20 / +1,30</td></tr>
+                            <tr><td>9,00</td><td>5,60 / 7,00</td><td>2,20 × 2,70</td><td>1,50 × 1,65</td><td>3,40 / +1,40</td></tr>
+                            <tr><td>10,00</td><td>5,90 / 7,40</td><td>2,40 × 2,80</td><td>1,60 × 1,70</td><td>3,80 / +1,50</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="table-note">Molduras: espesor provisional de 0,19 m.</p>
             </details>
 
             <!-- SECCIÓN 5: EXPORTACIÓN LOCAL OFFLINE -->
@@ -302,7 +322,7 @@
             
             <!-- ESTADO / CHIP SUPERIOR -->
             <div class="viewer-status">
-                <span>Frente: <span class="highlight" id="status-width">10.50 m</span></span>
+                <span>Interior: <span class="highlight" id="status-width">10,00 m</span></span>
                 <span class="status-sep">|</span>
                 <span class="status-win-item">Ventanas: <span class="highlight" id="status-windows">2 (1+1)</span></span>
                 <span class="status-sep status-win-item">|</span>
@@ -327,7 +347,7 @@
                             <span id="print-project-name" style="font-size: 0.8rem; font-weight: normal;">ASAMBLEA CRISTIANA</span>
                         </td>
                         <td><strong>PLANO:</strong> Elevación Frontal Paramétrica</td>
-                        <td><strong>LARGO FRENTE:</strong> <span id="print-width">10.50 m</span></td>
+                        <td><strong>ANCHO:</strong> <span id="print-width">10,00 m interior · 10,40 m exterior</span></td>
                     </tr>
                     <tr>
                         <td><strong>VENTANAS GÓTICAS:</strong> <span id="print-windows">2 unidades</span></td>

@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const viewport = $('viewer-viewport');
     const wrapper = $('viewer-svg-wrapper');
     const sidebar = $('sidebar');
-    const storageKey = 'asamblea-fachada:v1';
+    const storageKey = 'asamblea-fachada:v2';
     const pairs = ['total-width', 'manual-count', 'free-space', 'dim-size', 'font-size'];
     const fields = [...pairs.map(name => `slider-${name}`), 'select-dist-mode', 'select-theme',
         'toggle-dimensions', 'toggle-badges', 'toggle-levels', 'toggle-human', 'toggle-axes',
@@ -23,7 +23,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let panX = 0;
     let panY = 0;
 
-    const meters = value => `${value.toFixed(2)} m`;
+    const number = value => value.toFixed(2).replace('.', ',');
+    const meters = value => `${number(value)} m`;
     const text = (id, value) => { $(id).textContent = value; };
     function notify(message, error = false) {
         const notice = $('app-notice');
@@ -36,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function readOptions() {
         return {
-            totalWidth: Number($('slider-total-width').value),
+            interiorWidth: Number($('slider-total-width').value),
             minFreeSpace: Number($('slider-free-space').value),
             distributionMode: $('select-dist-mode').value,
             manualCount: Number($('slider-manual-count').value),
@@ -96,7 +97,17 @@ document.addEventListener('DOMContentLoaded', () => {
         wrapper.innerHTML = currentResult.svg;
         viewer.dataset.theme = options.theme;
         const layout = currentResult.layout;
-        ['val-total-width', 'badge-total-width', 'status-width', 'print-width', 'spec-total-width'].forEach(id => text(id, meters(layout.totalWidth)));
+        const dimensions = currentResult.dimensions;
+        ['val-total-width', 'status-width', 'spec-interior-width'].forEach(id => text(id, meters(dimensions.interiorWidth)));
+        text('badge-total-width', `Interior ${meters(dimensions.interiorWidth)}`);
+        text('val-exterior-width', meters(dimensions.totalWidth));
+        text('spec-total-width', meters(dimensions.totalWidth));
+        text('print-width', `${meters(dimensions.interiorWidth)} interior · ${meters(dimensions.totalWidth)} exterior`);
+        text('spec-heights', `${meters(dimensions.minHeight)} / ${meters(dimensions.maxHeight)}`);
+        text('spec-door', `${number(dimensions.doorWidth)} × ${meters(dimensions.doorHeight)}`);
+        text('spec-window', `${number(dimensions.windowWidth)} × ${meters(dimensions.windowHeight)}`);
+        text('spec-projection', `${meters(dimensions.projectionWidth)} · +${meters(dimensions.heightDifference)}`);
+        text('spec-moulding', meters(dimensions.mouldingThickness));
         text('badge-window-count', `${layout.totalWindows} ventanas`);
         text('status-windows', `${layout.totalWindows} (${layout.numWindowsPerWing} + ${layout.numWindowsPerWing})`);
         text('print-windows', `${layout.totalWindows} (${layout.numWindowsPerWing} por ala)`);
@@ -128,7 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
         text('geometry-status', layout.isGeometryValid ? (layout.totalWindows ? 'Geometría válida' : 'Sin ventanas laterales') : 'Revisar distribución');
         $('geometry-status').classList.toggle('invalid', !layout.isGeometryValid);
         document.querySelectorAll('.btn-preset').forEach(button => {
-            const active = Math.abs(Number(button.dataset.val) - layout.totalWidth) < 0.001;
+            const active = Math.abs(Number(button.dataset.val) - dimensions.interiorWidth) < 0.001;
             button.classList.toggle('active', active);
             button.setAttribute('aria-pressed', String(active));
         });
@@ -285,7 +296,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `Fachada_Iglesia_${width.toFixed(2)}m.${extension}`;
+        link.download = `Fachada_Iglesia_${width.toFixed(2)}m_interior.${extension}`;
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -299,12 +310,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const height = Math.round(width * bounds.height / bounds.width);
         svg.setAttribute('width', width);
         svg.setAttribute('height', height);
-        return { data: new XMLSerializer().serializeToString(svg), width, height, totalWidth: currentResult.layout.totalWidth };
+        return { data: new XMLSerializer().serializeToString(svg), width, height, interiorWidth: currentResult.dimensions.interiorWidth };
     }
     function downloadDXF() {
         try {
             const options = readOptions();
-            download(new Blob([engine.generateDXF(options)], { type: 'application/dxf' }), 'dxf', options.totalWidth);
+            const dimensions = engine.getFacadeDimensions(options.interiorWidth);
+            download(new Blob([engine.generateDXF(options)], { type: 'application/dxf' }), 'dxf', dimensions.interiorWidth);
             notify('DXF descargado. Las coordenadas están expresadas en metros.');
         } catch { notify('No se pudo exportar el DXF. Revisa las medidas e inténtalo de nuevo.', true); }
     }
@@ -312,7 +324,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('btn-download-svg').addEventListener('click', () => {
         try {
             const result = exportSVG();
-            download(new Blob([result.data], { type: 'image/svg+xml;charset=utf-8' }), 'svg', result.totalWidth);
+            download(new Blob([result.data], { type: 'image/svg+xml;charset=utf-8' }), 'svg', result.interiorWidth);
             notify('Plano vectorial SVG descargado.');
         } catch { notify('No se pudo exportar el SVG.', true); }
     });
@@ -337,7 +349,7 @@ document.addEventListener('DOMContentLoaded', () => {
             context.drawImage(img, 0, 0, canvas.width, canvas.height);
             const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
             if (!blob) throw new Error('PNG vacío');
-            download(blob, 'png', result.totalWidth);
+            download(blob, 'png', result.interiorWidth);
             notify('Imagen PNG de 3000 px descargada.');
         } catch { notify('No se pudo crear la imagen PNG. Puedes descargar el plano en SVG.', true); }
         finally {

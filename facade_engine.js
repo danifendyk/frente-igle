@@ -1,14 +1,20 @@
 /**
  * FAÇADE ENGINE - ASAMBLEA CRISTIANA
  * Motor geométrico y paramétrico para el dibujo del frente arquitectónico de la iglesia.
- * Replica con precisión milimétrica las cotas y geometría del plano CAD original:
- * - Pilastra: ancho 0.26, longitud total 3.62 m (remate +7.70 a base +4.08), saliente 0.20 m sobre muro (7.50 m), altura 1.40 m sobre cornisa (6.30 m).
- * - Ventana: vano 1.60x1.90, arcos R1.38 y R1.62, distribución simétrica en cada ala según el largo total.
- * - Módulo central estándar e inalterable, homogeneizado para todos los anchos ("largos") de frente.
+ * La geometría se interpola a partir de una tabla de proporciones para templos
+ * de 6 a 10 m de ancho interior. El ancho exterior suma siempre 0.40 m.
  */
 
 class FacadeEngine {
     constructor() {
+        this.RELATION_TABLE = [
+            { interiorWidth: 6, minHeight: 4.8, maxHeight: 5.9, doorWidth: 1.6, doorHeight: 2.4, windowWidth: 1.0, windowHeight: 1.4, projectionWidth: 2.7 },
+            { interiorWidth: 7, minHeight: 5.0, maxHeight: 6.2, doorWidth: 1.8, doorHeight: 2.5, windowWidth: 1.2, windowHeight: 1.5, projectionWidth: 2.9 },
+            { interiorWidth: 8, minHeight: 5.3, maxHeight: 6.6, doorWidth: 2.0, doorHeight: 2.6, windowWidth: 1.4, windowHeight: 1.6, projectionWidth: 3.2 },
+            { interiorWidth: 9, minHeight: 5.6, maxHeight: 7.0, doorWidth: 2.2, doorHeight: 2.7, windowWidth: 1.5, windowHeight: 1.65, projectionWidth: 3.4 },
+            { interiorWidth: 10, minHeight: 5.9, maxHeight: 7.4, doorWidth: 2.4, doorHeight: 2.8, windowWidth: 1.6, windowHeight: 1.7, projectionWidth: 3.8 }
+        ];
+
         // Dimensiones canónicas exactas del plano original (en metros)
         this.CONSTANTS = {
             // Módulo central
@@ -43,7 +49,8 @@ class FacadeEngine {
             WINDOW_ARCH_R_OUT: 1.62,   // Radio exterior archivolta ventana (espesor 0.24 m)
             WINDOW_MOULDING_THICK: 0.24,// Espesor total de molduras de ventana (1.62 - 1.38)
             
-            DEFAULT_TOTAL_WIDTH: 10.50,// Ancho original del plano
+            DEFAULT_INTERIOR_WIDTH: 10.00,
+            DEFAULT_TOTAL_WIDTH: 10.40,
             BASE_OUTER_MARGIN: 0.62,   // Margen exterior exacto: del muro exterior a la moldura exterior
             BASE_INNER_MARGIN: 1.05,   // Margen interior de moldura al portal central
             DEFAULT_MIN_FREE_SPACE: 1.50// Separación mínima libre entre ventanas
@@ -60,9 +67,13 @@ class FacadeEngine {
         const bounded = FacadeEngine.boundedNumber;
         const title = (value, fallback) => typeof value === 'string'
             ? value.replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 20) : fallback;
+        const suppliedInterior = input.interiorWidth !== undefined
+            ? bounded(input.interiorWidth, 10, 6, 10)
+            : bounded(Number(input.totalWidth) - 0.40, 10, 6, 10);
         return {
             ...input,
-            totalWidth: bounded(input.totalWidth, 10.50, 6, 35),
+            interiorWidth: suppliedInterior,
+            totalWidth: +(suppliedInterior + 0.40).toFixed(3),
             minFreeSpace: bounded(input.minFreeSpace, 1.50, 1, 3),
             manualCount: Math.floor(bounded(input.manualCount, 1, 0, 6)),
             distributionMode: ['auto', 'manual', 'exact_150'].includes(input.distributionMode) ? input.distributionMode : 'auto',
@@ -73,25 +84,89 @@ class FacadeEngine {
         };
     }
 
+    getFacadeDimensions(interiorWidth) {
+        const width = FacadeEngine.boundedNumber(interiorWidth, 10, 6, 10);
+        const lowerIndex = Math.min(this.RELATION_TABLE.length - 2, Math.max(0, Math.floor(width) - 6));
+        const lower = this.RELATION_TABLE[lowerIndex];
+        const upper = this.RELATION_TABLE[lowerIndex + 1];
+        const factor = Math.min(1, Math.max(0, width - lower.interiorWidth));
+        const interpolate = key => +(lower[key] + (upper[key] - lower[key]) * factor).toFixed(4);
+        const dimensions = { interiorWidth: width, totalWidth: +(width + 0.40).toFixed(3) };
+        for (const key of ['minHeight', 'maxHeight', 'doorWidth', 'doorHeight', 'windowWidth', 'windowHeight', 'projectionWidth']) {
+            dimensions[key] = interpolate(key);
+        }
+        dimensions.heightDifference = +(dimensions.maxHeight - dimensions.minHeight).toFixed(4);
+        dimensions.mouldingThickness = 0.19;
+        return dimensions;
+    }
+
+    getFacadeConstants(interiorWidth) {
+        const d = this.getFacadeDimensions(interiorWidth);
+        const moulding = d.mouldingThickness;
+        const archRadius = width => width * 0.55;
+        const archRise = (width, radius) => Math.sqrt(radius * width - width * width / 4);
+        const doorRadius = archRadius(d.doorWidth);
+        const windowRadius = archRadius(d.windowWidth);
+        const sillY = 0.60 + d.interiorWidth * 0.05;
+        const doorSpringY = d.doorHeight - archRise(d.doorWidth, doorRadius);
+        const windowSpringY = sillY + d.windowHeight - archRise(d.windowWidth, windowRadius);
+        const wingCorniceBottom = d.minHeight - moulding;
+        const wingMouldingY = wingCorniceBottom - d.heightDifference * 0.75;
+        const pilasterBottom = wingMouldingY - d.heightDifference * 0.65;
+
+        return {
+            ...this.CONSTANTS,
+            DIMENSIONS: d,
+            PORTAL_WIDTH: d.doorWidth + moulding * 2,
+            DOOR_OPENING: d.doorWidth,
+            DOOR_HEIGHT: doorSpringY,
+            DOOR_TOTAL_HEIGHT: d.doorHeight,
+            DOOR_ARCH_R_IN: doorRadius,
+            DOOR_ARCH_R_OUT: doorRadius + moulding,
+            CENTRAL_WALL_TOP: d.maxHeight - moulding,
+            PILASTER_WIDTH: moulding,
+            PILASTER_OUTER_X: d.projectionWidth / 2,
+            PILASTER_INNER_X: d.projectionWidth / 2 - moulding,
+            PILASTER_TOP: d.maxHeight,
+            PILASTER_BOTTOM: pilasterBottom,
+            PILASTER_HEIGHT: d.maxHeight - pilasterBottom,
+            WING_CORNICE_TOP: d.minHeight,
+            WING_CORNICE_BOT: wingCorniceBottom,
+            WING_CORNICE_R: Math.max(0.10, moulding * 0.70),
+            WING_MOULDING_Y: wingMouldingY,
+            WINDOW_WIDTH: d.windowWidth,
+            WINDOW_RECT_HEIGHT: windowSpringY - sillY,
+            WINDOW_SPRING_Y: windowSpringY,
+            WINDOW_SILL_Y: sillY,
+            WINDOW_TOTAL_HEIGHT: d.windowHeight,
+            WINDOW_ARCH_R_IN: windowRadius,
+            WINDOW_ARCH_R_OUT: windowRadius + moulding,
+            WINDOW_MOULDING_THICK: moulding
+        };
+    }
+
     static escapeXML(value) {
         return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[char]));
     }
 
-    getTitleGeometry(line1, line2, fontSize) {
+    getTitleGeometry(line1, line2, fontSize, centerY = 6.47) {
         const maxLength = Math.max(line1.length, line2.length, 1);
         const boxW = +Math.max(1.95, maxLength * fontSize * 0.72 + 0.55).toFixed(2);
         const boxH = +Math.max(0.74, fontSize * 2.80 + 0.18).toFixed(2);
-        return { boxW, boxH, boxY: +(6.47 + boxH / 2).toFixed(2),
-            line1Y: +(6.41 + fontSize * 0.58).toFixed(2), line2Y: +(6.41 - fontSize * 0.58).toFixed(2) };
+        return { boxW, boxH, boxY: +(centerY + boxH / 2).toFixed(2),
+            line1Y: +(centerY - 0.06 + fontSize * 0.58).toFixed(2),
+            line2Y: +(centerY - 0.06 - fontSize * 0.58).toFixed(2) };
     }
 
     /**
      * Calcula la distribución paramétrica de ventanas según el ancho total ("largo").
      * Regla: Conserva el módulo central y añade 1 ventana cada 1.5 m libres entre ventanas.
      */
-    calculateLayout(totalWidth, minFreeSpace = 1.50, distributionMode = 'auto', manualCount = 1) {
-        const C = this.CONSTANTS;
-        ({ totalWidth, minFreeSpace, distributionMode, manualCount } = this.normalizeOptions({ totalWidth, minFreeSpace, distributionMode, manualCount }));
+    calculateLayout(interiorWidth, minFreeSpace = 1.50, distributionMode = 'auto', manualCount = 1) {
+        const normalized = this.normalizeOptions({ interiorWidth, minFreeSpace, distributionMode, manualCount });
+        let { totalWidth } = normalized;
+        ({ minFreeSpace, distributionMode, manualCount } = normalized);
+        const C = this.getFacadeConstants(normalized.interiorWidth);
 
         const halfTotal = totalWidth / 2.0;
         // El paño del ala donde se centran las ventanas corresponde a la cota 3.29 m (media_1788703759354.png):
@@ -193,6 +268,8 @@ class FacadeEngine {
 
         return {
             totalWidth,
+            interiorWidth: normalized.interiorWidth,
+            dimensions: C.DIMENSIONS,
             wingWidth: wingSpan,
             wingSpan,
             lowerWingWidth: +((totalWidth - C.PORTAL_WIDTH) / 2.0).toFixed(2),
@@ -245,6 +322,7 @@ class FacadeEngine {
     generateSVG(options = {}) {
         options = this.normalizeOptions(options);
         const {
+            interiorWidth = this.CONSTANTS.DEFAULT_INTERIOR_WIDTH,
             totalWidth = this.CONSTANTS.DEFAULT_TOTAL_WIDTH,
             minFreeSpace = 1.50,
             distributionMode = 'auto',
@@ -262,8 +340,8 @@ class FacadeEngine {
             titleFontSize = 0.20
         } = options;
 
-        const layout = this.calculateLayout(totalWidth, minFreeSpace, distributionMode, manualCount);
-        const C = this.CONSTANTS;
+        const layout = this.calculateLayout(interiorWidth, minFreeSpace, distributionMode, manualCount);
+        const C = this.getFacadeConstants(interiorWidth);
 
         const THEMES = {
             cad_dark: {
@@ -386,7 +464,7 @@ class FacadeEngine {
         const minX = -(totalWidth / 2.0 + marginX);
         const maxX = +(totalWidth / 2.0 + marginX + (showHuman ? 1.6 : 0) + (showLevels ? 1.5 : 0));
         const minY = -2.50;
-        const maxY = 9.50;
+        const maxY = +(C.PILASTER_TOP + 1.80).toFixed(2);
 
         const worldWidth = +(maxX - minX).toFixed(3);
         const worldHeight = +(maxY - minY).toFixed(3);
@@ -436,9 +514,9 @@ class FacadeEngine {
         // 2. Ejes de simetría
         if (showAxes) {
             svg += `<g id="layer-axes">\n`;
-            svg += `  <line x1="${toSvgX(0)}" y1="${toSvgY(-1.8)}" x2="${toSvgX(0)}" y2="${toSvgY(8.85)}" class="axis-line"/>\n`;
+            svg += `  <line x1="${toSvgX(0)}" y1="${toSvgY(-1.8)}" x2="${toSvgX(0)}" y2="${toSvgY(C.PILASTER_TOP + 1.15)}" class="axis-line"/>\n`;
             layout.allWindowCenters.forEach(cx => {
-                svg += `  <line x1="${toSvgX(cx)}" y1="${toSvgY(-0.8)}" x2="${toSvgX(cx)}" y2="${toSvgY(6.5)}" class="axis-line"/>\n`;
+                svg += `  <line x1="${toSvgX(cx)}" y1="${toSvgY(-0.8)}" x2="${toSvgX(cx)}" y2="${toSvgY(C.WING_CORNICE_TOP + 0.20)}" class="axis-line"/>\n`;
             });
             svg += `  <line x1="${toSvgX(-totalWidth/2 - 0.5)}" y1="${toSvgY(C.WINDOW_SPRING_Y)}" x2="${toSvgX(totalWidth/2 + 0.5)}" y2="${toSvgY(C.WINDOW_SPRING_Y)}" class="axis-line"/>\n`;
             svg += `</g>\n`;
@@ -543,18 +621,21 @@ class FacadeEngine {
         svg += `  <line x1="${toSvgX(0)}" y1="${toSvgY(0)}" x2="${toSvgX(0)}" y2="${toSvgY(doorH)}" class="door-frame" stroke-width="0.035"/>\n`;
         
         // Tableros almohadillados de madera (2 paneles por hoja)
-        const panelMargin = 0.10;
+        const panelMargin = Math.max(0.07, C.DOOR_OPENING * 0.04);
         const leafW = +(doorHalfW - panelMargin * 2).toFixed(3);
-        const pMidY = 1.35;
+        const panelGap = Math.min(0.08, doorH * 0.08);
+        const panelHeight = Math.max(0.20, (doorH - panelMargin * 2 - panelGap) / 2);
+        const lowerPanelTop = panelMargin + panelHeight;
+        const upperPanelTop = doorH - panelMargin;
         // Hoja izquierda
-        svg += `  <rect x="${toSvgX(-doorHalfW + panelMargin)}" y="${toSvgY(pMidY - 0.05)}" width="${leafW}" height="1.15" fill="${pal.doorPanel}" stroke="${pal.doorStroke}" stroke-width="0.02" opacity="0.8"/>\n`;
-        svg += `  <rect x="${toSvgX(-doorHalfW + panelMargin)}" y="${toSvgY(doorH - panelMargin)}" width="${leafW}" height="1.35" fill="${pal.doorPanel}" stroke="${pal.doorStroke}" stroke-width="0.02" opacity="0.8"/>\n`;
+        svg += `  <rect x="${toSvgX(-doorHalfW + panelMargin)}" y="${toSvgY(lowerPanelTop)}" width="${leafW}" height="${panelHeight}" fill="${pal.doorPanel}" stroke="${pal.doorStroke}" stroke-width="0.02" opacity="0.8"/>\n`;
+        svg += `  <rect x="${toSvgX(-doorHalfW + panelMargin)}" y="${toSvgY(upperPanelTop)}" width="${leafW}" height="${panelHeight}" fill="${pal.doorPanel}" stroke="${pal.doorStroke}" stroke-width="0.02" opacity="0.8"/>\n`;
         // Hoja derecha
-        svg += `  <rect x="${toSvgX(panelMargin)}" y="${toSvgY(pMidY - 0.05)}" width="${leafW}" height="1.15" fill="${pal.doorPanel}" stroke="${pal.doorStroke}" stroke-width="0.02" opacity="0.8"/>\n`;
-        svg += `  <rect x="${toSvgX(panelMargin)}" y="${toSvgY(doorH - panelMargin)}" width="${leafW}" height="1.35" fill="${pal.doorPanel}" stroke="${pal.doorStroke}" stroke-width="0.02" opacity="0.8"/>\n`;
+        svg += `  <rect x="${toSvgX(panelMargin)}" y="${toSvgY(lowerPanelTop)}" width="${leafW}" height="${panelHeight}" fill="${pal.doorPanel}" stroke="${pal.doorStroke}" stroke-width="0.02" opacity="0.8"/>\n`;
+        svg += `  <rect x="${toSvgX(panelMargin)}" y="${toSvgY(upperPanelTop)}" width="${leafW}" height="${panelHeight}" fill="${pal.doorPanel}" stroke="${pal.doorStroke}" stroke-width="0.02" opacity="0.8"/>\n`;
 
         // Herrajes de bronce / oro
-        const handleY = 1.05;
+        const handleY = Math.min(1.05, doorH * 0.68);
         svg += `  <rect x="${toSvgX(-0.065)}" y="${toSvgY(handleY + 0.18)}" width="0.038" height="0.32" rx="0.015" fill="${pal.doorHandle}" stroke="#b45309" stroke-width="0.012"/>\n`;
         svg += `  <rect x="${toSvgX(0.027)}" y="${toSvgY(handleY + 0.18)}" width="0.038" height="0.32" rx="0.015" fill="${pal.doorHandle}" stroke="#b45309" stroke-width="0.012"/>\n`;
         svg += `  <circle cx="${toSvgX(-0.046)}" cy="${toSvgY(handleY)}" r="0.012" fill="#78350f"/>\n`;
@@ -570,7 +651,8 @@ class FacadeEngine {
         ].join(' ');
         svg += `  <path d="${timpanumPath}" class="door-fill door-frame"/>\n`;
 
-        const doorArchRadii = [2.20, 2.28, 2.36, 2.44];
+        const doorArchRadii = Array.from({ length: 4 }, (_, index) =>
+            C.DOOR_ARCH_R_IN + (C.DOOR_ARCH_R_OUT - C.DOOR_ARCH_R_IN) * index / 3);
         doorArchRadii.forEach((r, idx) => {
             const spanR = +(C.DOOR_OPENING + (r - C.DOOR_ARCH_R_IN) * 2.0).toFixed(3);
             const archG = this.getPointedArchGeometry(0, spanR, doorH, r);
@@ -586,7 +668,7 @@ class FacadeEngine {
 
         // Ornamento central (cruz ojival)
         svg += `  <g id="ornament-cross" stroke="${pal.wallStroke}" stroke-width="0.028" opacity="0.85">\n`;
-        const crossY = doorH + 0.85;
+        const crossY = C.DOOR_TOTAL_HEIGHT + Math.max(0.30, (C.WING_MOULDING_Y - C.DOOR_TOTAL_HEIGHT) * 0.45);
         svg += `    <line x1="${toSvgX(-0.12)}" y1="${toSvgY(crossY)}" x2="${toSvgX(0.12)}" y2="${toSvgY(crossY)}"/>\n`;
         svg += `    <line x1="${toSvgX(0)}" y1="${toSvgY(crossY - 0.16)}" x2="${toSvgX(0)}" y2="${toSvgY(crossY + 0.16)}"/>\n`;
         svg += `    <circle cx="${toSvgX(0)}" cy="${toSvgY(crossY)}" r="0.045" fill="none" stroke="${pal.wallStroke}" stroke-width="0.02"/>\n`;
@@ -595,7 +677,8 @@ class FacadeEngine {
 
         // 6. Rótulo institucional "ASAMBLEA CRISTIANA"
         svg += `<g id="layer-title">\n`;
-        const { boxW, boxH, boxY, line1Y, line2Y } = this.getTitleGeometry(titleLine1, titleLine2, titleFontSize);
+        const titleCenterY = C.WING_CORNICE_TOP + C.DIMENSIONS.heightDifference * 0.30;
+        const { boxW, boxH, boxY, line1Y, line2Y } = this.getTitleGeometry(titleLine1, titleLine2, titleFontSize, titleCenterY);
 
         // Placa arquitectónica con doble filete y remaches de fijación (fondo 100% opaco y limpio)
         svg += `  <rect x="${toSvgX(-boxW/2)}" y="${toSvgY(boxY)}" width="${boxW}" height="${boxH}" stroke="${pal.textTitle}" stroke-width="0.028" fill="${pal.wallFill}" opacity="1"/>\n`;
@@ -622,7 +705,8 @@ class FacadeEngine {
         const winHRect = C.WINDOW_RECT_HEIGHT; // 1.90 m
         const winSpringY = C.WINDOW_SPRING_Y; // 3.00 m
         const winSillY = C.WINDOW_SILL_Y; // 1.10 m
-        const windowArchRadii = [1.38, 1.46, 1.54, 1.62];
+        const windowArchRadii = Array.from({ length: 4 }, (_, index) =>
+            C.WINDOW_ARCH_R_IN + (C.WINDOW_ARCH_R_OUT - C.WINDOW_ARCH_R_IN) * index / 3);
 
         layout.allWindowCenters.forEach((cx, wIndex) => {
             const leftX = +(cx - winW / 2.0).toFixed(3);
@@ -848,7 +932,7 @@ class FacadeEngine {
             // 1. Cota vertical 3.62 de la pilastra izquierda (media_1788703155893.png):
             // Acota la longitud completa de la pilastra superior (de base 4.08 a remate 7.70)
             const leftColDimX = -2.18;
-            svg += drawVertDim(leftColDimX, C.PILASTER_BOTTOM, C.PILASTER_TOP, '3.62', 0);
+            svg += drawVertDim(leftColDimX, C.PILASTER_BOTTOM, C.PILASTER_TOP, C.PILASTER_HEIGHT.toFixed(2), 0);
 
             // Líneas testigo horizontales de la pilastra izquierda:
             svg += `  <line x1="${toSvgX(-C.PILASTER_OUTER_X)}" y1="${toSvgY(C.PILASTER_TOP)}" x2="${toSvgX(leftColDimX - 0.08)}" y2="${toSvgY(C.PILASTER_TOP)}" class="dim-line" opacity="0.4"/>\n`;
@@ -859,30 +943,30 @@ class FacadeEngine {
             // Cadena adyacente de niveles de coronación escalonada (1.20 y 0.20):
             // Tier 1: 1.20 (cornisa 6.30 a muro 7.50) en x = -2.55
             const leftCrownDimX1 = -2.55;
-            svg += drawVertDim(leftCrownDimX1, C.WING_CORNICE_TOP, C.CENTRAL_WALL_TOP, '1.20', 0);
+            svg += drawVertDim(leftCrownDimX1, C.WING_CORNICE_TOP, C.CENTRAL_WALL_TOP, (C.CENTRAL_WALL_TOP - C.WING_CORNICE_TOP).toFixed(2), 0);
             svg += `  <line x1="${toSvgX(leftColDimX)}" y1="${toSvgY(C.CENTRAL_WALL_TOP)}" x2="${toSvgX(leftCrownDimX1 - 0.08)}" y2="${toSvgY(C.CENTRAL_WALL_TOP)}" class="dim-line" opacity="0.3"/>\n`;
             svg += `  <line x1="${toSvgX(leftColDimX)}" y1="${toSvgY(C.WING_CORNICE_TOP)}" x2="${toSvgX(leftCrownDimX1 - 0.08)}" y2="${toSvgY(C.WING_CORNICE_TOP)}" class="dim-line" opacity="0.3"/>\n`;
 
             // Tier 2: 0.20 (muro 7.50 a remate 7.70) en x = -2.90 para evitar solapamiento con 1.20
             const leftCrownDimX2 = -2.90;
-            svg += drawVertDim(leftCrownDimX2, C.CENTRAL_WALL_TOP, C.PILASTER_TOP, '0.20', 0);
+            svg += drawVertDim(leftCrownDimX2, C.CENTRAL_WALL_TOP, C.PILASTER_TOP, (C.PILASTER_TOP - C.CENTRAL_WALL_TOP).toFixed(2), 0);
             svg += `  <line x1="${toSvgX(leftCrownDimX1)}" y1="${toSvgY(C.PILASTER_TOP)}" x2="${toSvgX(leftCrownDimX2 - 0.08)}" y2="${toSvgY(C.PILASTER_TOP)}" class="dim-line" opacity="0.3"/>\n`;
             svg += `  <line x1="${toSvgX(leftCrownDimX1)}" y1="${toSvgY(C.CENTRAL_WALL_TOP)}" x2="${toSvgX(leftCrownDimX2 - 0.08)}" y2="${toSvgY(C.CENTRAL_WALL_TOP)}" class="dim-line" opacity="0.3"/>\n`;
 
             // 2. Cota vertical derecha (x = +2.24): Altura de pilastra sobre cornisa (1.40)
             // Exactamente como en plano: 6.30 a 7.70 = 1.40 m
-            const rightColDimX = 2.24;
-            svg += drawVertDim(rightColDimX, C.WING_CORNICE_TOP, C.PILASTER_TOP, '1.40', 0);
+            const rightColDimX = C.PILASTER_OUTER_X + 0.28;
+            svg += drawVertDim(rightColDimX, C.WING_CORNICE_TOP, C.PILASTER_TOP, C.DIMENSIONS.heightDifference.toFixed(2), 0);
             svg += `  <line x1="${toSvgX(C.PILASTER_OUTER_X)}" y1="${toSvgY(C.PILASTER_TOP)}" x2="${toSvgX(rightColDimX + 0.08)}" y2="${toSvgY(C.PILASTER_TOP)}" class="dim-line" opacity="0.4"/>\n`;
             svg += `  <line x1="${toSvgX(C.PILASTER_OUTER_X)}" y1="${toSvgY(C.WING_CORNICE_TOP)}" x2="${toSvgX(rightColDimX + 0.08)}" y2="${toSvgY(C.WING_CORNICE_TOP)}" class="dim-line" opacity="0.4"/>\n`;
 
             // 3. Cadena horizontal inferior de coronación (y = 7.85 m):
             // Acotación de 1.70 y 1.70 desde el eje central a las caras interiores de las pilastras
-            const innerDimY = 7.85;
-            const innerLeftX = -1.70;
-            const innerRightX = 1.70;
-            svg += drawHorizDim(innerLeftX, 0, innerDimY, '1.70');
-            svg += drawHorizDim(0, innerRightX, innerDimY, '1.70');
+            const innerDimY = C.PILASTER_TOP + 0.15;
+            const innerLeftX = -C.PILASTER_INNER_X;
+            const innerRightX = C.PILASTER_INNER_X;
+            svg += drawHorizDim(innerLeftX, 0, innerDimY, C.PILASTER_INNER_X.toFixed(2));
+            svg += drawHorizDim(0, innerRightX, innerDimY, C.PILASTER_INNER_X.toFixed(2));
 
             // Líneas guía verticales para 1.70 y 1.70:
             svg += `  <line x1="${toSvgX(innerLeftX)}" y1="${toSvgY(C.PILASTER_TOP)}" x2="${toSvgX(innerLeftX)}" y2="${toSvgY(innerDimY + 0.08)}" class="dim-line" opacity="0.4"/>\n`;
@@ -894,7 +978,7 @@ class FacadeEngine {
             // - Tramo central: 3.40 entre pilastras
             // - Directriz pilastra derecha: 0.33
             // - Tramo derecho: de la pilastra derecha al borde del ala (3.29 a 10.50m)
-            const topDimY = 8.35;
+            const topDimY = C.PILASTER_TOP + 0.65;
             const wingToColSpan = +(halfTotal - C.PILASTER_OUTER_X).toFixed(2);
 
             // Tramo ala izquierda (3.29 a 10.50m)
@@ -904,16 +988,16 @@ class FacadeEngine {
             svg += `  <line x1="${toSvgX(-C.PILASTER_OUTER_X)}" y1="${toSvgY(topDimY)}" x2="${toSvgX(-C.PILASTER_INNER_X)}" y2="${toSvgY(topDimY)}" class="dim-line"/>\n`;
             svg += drawDot(-C.PILASTER_OUTER_X, topDimY);
             svg += drawDot(-C.PILASTER_INNER_X, topDimY);
-            svg += drawLeader(-((C.PILASTER_OUTER_X + C.PILASTER_INNER_X) / 2.0), topDimY, -1.60, topDimY + 0.35, -1.20, '0.26');
+            svg += drawLeader(-((C.PILASTER_OUTER_X + C.PILASTER_INNER_X) / 2.0), topDimY, -C.PILASTER_INNER_X, topDimY + 0.35, -0.80, C.PILASTER_WIDTH.toFixed(2));
 
             // Tramo central entre pilastras (3.40)
-            svg += drawHorizDim(-C.PILASTER_INNER_X, C.PILASTER_INNER_X, topDimY, '3.40');
+            svg += drawHorizDim(-C.PILASTER_INNER_X, C.PILASTER_INNER_X, topDimY, (C.PILASTER_INNER_X * 2).toFixed(2));
 
             // Tramo pilastra derecha (ancho exacto 0.26 m, según media_1788705305377.png)
             svg += `  <line x1="${toSvgX(C.PILASTER_INNER_X)}" y1="${toSvgY(topDimY)}" x2="${toSvgX(C.PILASTER_OUTER_X)}" y2="${toSvgY(topDimY)}" class="dim-line"/>\n`;
             svg += drawDot(C.PILASTER_INNER_X, topDimY);
             svg += drawDot(C.PILASTER_OUTER_X, topDimY);
-            svg += drawLeader((C.PILASTER_INNER_X + C.PILASTER_OUTER_X) / 2.0, topDimY, 1.62, topDimY + 0.35, 2.05, '0.26');
+            svg += drawLeader((C.PILASTER_INNER_X + C.PILASTER_OUTER_X) / 2.0, topDimY, C.PILASTER_INNER_X, topDimY + 0.35, 0.80, C.PILASTER_WIDTH.toFixed(2));
 
             // Tramo ala derecha (3.29 a 10.50m)
             svg += drawHorizDim(C.PILASTER_OUTER_X, halfTotal, topDimY, `${wingToColSpan.toFixed(2)}`);
@@ -933,7 +1017,7 @@ class FacadeEngine {
             const dimSillY = C.WINDOW_SILL_Y;
 
             // Cotas de ala a y = 5.75m en paño izquierdo y derecho (3.29m a L=10.50m)
-            const wingDimY = 5.75;
+            const wingDimY = C.WING_CORNICE_TOP - 0.55;
             // Ala izquierda
             svg += drawHorizDim(-halfTotal, -C.PILASTER_OUTER_X, wingDimY, `${layout.wingSpan.toFixed(2)}`);
             svg += `  <line x1="${toSvgX(-halfTotal)}" y1="${toSvgY(C.WING_CORNICE_TOP)}" x2="${toSvgX(-halfTotal)}" y2="${toSvgY(wingDimY + 0.10)}" class="dim-line" opacity="0.35"/>\n`;
@@ -950,12 +1034,13 @@ class FacadeEngine {
 
                 // Cota 1.90: vertical en el costado exterior de la ventana izquierda (sin colisión con márgenes de ala)
                 const dimWinVertX = +(wLeftOuterM - 0.22).toFixed(3);
-                svg += drawVertDim(dimWinVertX, C.WINDOW_SILL_Y, C.WINDOW_SPRING_Y, '1.90', 0);
-                svg += `  <line x1="${toSvgX(wLeftOuterM)}" y1="${toSvgY(C.WINDOW_SPRING_Y)}" x2="${toSvgX(dimWinVertX - 0.08)}" y2="${toSvgY(C.WINDOW_SPRING_Y)}" class="dim-line" opacity="0.35"/>\n`;
+                const windowTopY = C.WINDOW_SILL_Y + C.WINDOW_TOTAL_HEIGHT;
+                svg += drawVertDim(dimWinVertX, C.WINDOW_SILL_Y, windowTopY, C.WINDOW_TOTAL_HEIGHT.toFixed(2), 0);
+                svg += `  <line x1="${toSvgX(wLeftOuterM)}" y1="${toSvgY(windowTopY)}" x2="${toSvgX(dimWinVertX - 0.08)}" y2="${toSvgY(windowTopY)}" class="dim-line" opacity="0.35"/>\n`;
                 svg += `  <line x1="${toSvgX(wLeftOuterM)}" y1="${toSvgY(C.WINDOW_SILL_Y)}" x2="${toSvgX(dimWinVertX - 0.08)}" y2="${toSvgY(C.WINDOW_SILL_Y)}" class="dim-line" opacity="0.35"/>\n`;
 
                 // Cota 1.60: ancho de vano inferior de la ventana izquierda
-                svg += drawHorizDim(wLeftRef - C.WINDOW_WIDTH / 2.0, wLeftRef + C.WINDOW_WIDTH / 2.0, dimSillY - 0.35, '1.60');
+                svg += drawHorizDim(wLeftRef - C.WINDOW_WIDTH / 2.0, wLeftRef + C.WINDOW_WIDTH / 2.0, dimSillY - 0.35, C.WINDOW_WIDTH.toFixed(2));
             }
 
             // Cotas de distribución y márgenes en el paño derecho (Simetría rigurosa)
@@ -984,20 +1069,20 @@ class FacadeEngine {
                 }
 
                 // Cota 1.60: ancho vano inferior en ventana derecha
-                svg += drawHorizDim(lastWinCenter - C.WINDOW_WIDTH / 2.0, lastWinCenter + C.WINDOW_WIDTH / 2.0, dimSillY - 0.35, '1.60');
+                svg += drawHorizDim(lastWinCenter - C.WINDOW_WIDTH / 2.0, lastWinCenter + C.WINDOW_WIDTH / 2.0, dimSillY - 0.35, C.WINDOW_WIDTH.toFixed(2));
             }
 
             // Cotas verticales derecha de moldura (5.05m) y cornisa (1.05m y 0.20m escalonadas):
             const rightDimX = halfTotal + 0.55;
-            svg += drawVertDim(rightDimX, 0, C.WING_MOULDING_Y, '5.05', 0);
-            svg += drawVertDim(rightDimX, C.WING_MOULDING_Y, C.WING_CORNICE_BOT, '1.05', 0);
+            svg += drawVertDim(rightDimX, 0, C.WING_MOULDING_Y, C.WING_MOULDING_Y.toFixed(2), 0);
+            svg += drawVertDim(rightDimX, C.WING_MOULDING_Y, C.WING_CORNICE_BOT, (C.WING_CORNICE_BOT - C.WING_MOULDING_Y).toFixed(2), 0);
             svg += `  <line x1="${toSvgX(halfTotal)}" y1="${toSvgY(0)}" x2="${toSvgX(rightDimX + 0.08)}" y2="${toSvgY(0)}" class="dim-line" opacity="0.35"/>\n`;
             svg += `  <line x1="${toSvgX(halfTotal)}" y1="${toSvgY(C.WING_MOULDING_Y)}" x2="${toSvgX(rightDimX + 0.08)}" y2="${toSvgY(C.WING_MOULDING_Y)}" class="dim-line" opacity="0.35"/>\n`;
             svg += `  <line x1="${toSvgX(halfTotal)}" y1="${toSvgY(C.WING_CORNICE_BOT)}" x2="${toSvgX(rightDimX + 0.08)}" y2="${toSvgY(C.WING_CORNICE_BOT)}" class="dim-line" opacity="0.35"/>\n`;
 
             // Cota 0.20 de cornisa en tier exterior (x = halfTotal + 0.95) para cero solapamiento con 1.05m:
             const rightCorniceDimX2 = halfTotal + 0.95;
-            svg += drawVertDim(rightCorniceDimX2, C.WING_CORNICE_BOT, C.WING_CORNICE_TOP, '0.20', 0);
+            svg += drawVertDim(rightCorniceDimX2, C.WING_CORNICE_BOT, C.WING_CORNICE_TOP, C.DIMENSIONS.mouldingThickness.toFixed(2), 0);
             svg += `  <line x1="${toSvgX(rightDimX)}" y1="${toSvgY(C.WING_CORNICE_BOT)}" x2="${toSvgX(rightCorniceDimX2 + 0.08)}" y2="${toSvgY(C.WING_CORNICE_BOT)}" class="dim-line" opacity="0.35"/>\n`;
             svg += `  <line x1="${toSvgX(halfTotal)}" y1="${toSvgY(C.WING_CORNICE_TOP)}" x2="${toSvgX(rightCorniceDimX2 + 0.08)}" y2="${toSvgY(C.WING_CORNICE_TOP)}" class="dim-line" opacity="0.35"/>\n`;
 
@@ -1020,9 +1105,10 @@ class FacadeEngine {
             svg += `  <line x1="${toSvgX(halfTotal)}" y1="${toSvgY(0)}" x2="${toSvgX(halfTotal)}" y2="${toSvgY(-0.85)}" class="dim-line" opacity="0.35"/>\n`;
 
             // Cota vano puerta central (2.40):
-            svg += drawHorizDim(-doorHalfW, doorHalfW, 3.25, `${C.DOOR_OPENING.toFixed(2)}`);
-            svg += `  <line x1="${toSvgX(-doorHalfW)}" y1="${toSvgY(C.DOOR_HEIGHT)}" x2="${toSvgX(-doorHalfW)}" y2="${toSvgY(3.35)}" class="dim-line" opacity="0.35"/>\n`;
-            svg += `  <line x1="${toSvgX(doorHalfW)}" y1="${toSvgY(C.DOOR_HEIGHT)}" x2="${toSvgX(doorHalfW)}" y2="${toSvgY(3.35)}" class="dim-line" opacity="0.35"/>\n`;
+            const doorDimY = C.DOOR_TOTAL_HEIGHT + 0.30;
+            svg += drawHorizDim(-doorHalfW, doorHalfW, doorDimY, `${C.DOOR_OPENING.toFixed(2)}`);
+            svg += `  <line x1="${toSvgX(-doorHalfW)}" y1="${toSvgY(C.DOOR_HEIGHT)}" x2="${toSvgX(-doorHalfW)}" y2="${toSvgY(doorDimY + 0.10)}" class="dim-line" opacity="0.35"/>\n`;
+            svg += `  <line x1="${toSvgX(doorHalfW)}" y1="${toSvgY(C.DOOR_HEIGHT)}" x2="${toSvgX(doorHalfW)}" y2="${toSvgY(doorDimY + 0.10)}" class="dim-line" opacity="0.35"/>\n`;
 
             // =========================================================
             // D) COTAS VERTICALES GENERALES EN CASCADA EXTERIOR IZQUIERDA
@@ -1033,17 +1119,17 @@ class FacadeEngine {
             const leftDim3 = -halfTotal - 1.75; // Nivel muro central (+7.50)
             const leftDim4 = -halfTotal - 2.35; // Nivel remate pilastra (+7.70)
 
-            svg += drawVertDim(leftDim1, 0, C.WINDOW_SPRING_Y, '3.00', 0);
+            svg += drawVertDim(leftDim1, 0, C.DOOR_TOTAL_HEIGHT, C.DOOR_TOTAL_HEIGHT.toFixed(2), 0);
             svg += `  <line x1="${toSvgX(-halfTotal)}" y1="${toSvgY(0)}" x2="${toSvgX(leftDim1 - 0.08)}" y2="${toSvgY(0)}" class="dim-line" opacity="0.35"/>\n`;
-            svg += `  <line x1="${toSvgX(-halfTotal)}" y1="${toSvgY(C.WINDOW_SPRING_Y)}" x2="${toSvgX(leftDim1 - 0.08)}" y2="${toSvgY(C.WINDOW_SPRING_Y)}" class="dim-line" opacity="0.35"/>\n`;
+            svg += `  <line x1="${toSvgX(-halfTotal)}" y1="${toSvgY(C.DOOR_TOTAL_HEIGHT)}" x2="${toSvgX(leftDim1 - 0.08)}" y2="${toSvgY(C.DOOR_TOTAL_HEIGHT)}" class="dim-line" opacity="0.35"/>\n`;
 
-            svg += drawVertDim(leftDim2, 0, C.WING_CORNICE_TOP, '6.30', 0);
+            svg += drawVertDim(leftDim2, 0, C.WING_CORNICE_TOP, C.WING_CORNICE_TOP.toFixed(2), 0);
             svg += `  <line x1="${toSvgX(-halfTotal)}" y1="${toSvgY(C.WING_CORNICE_TOP)}" x2="${toSvgX(leftDim2 - 0.08)}" y2="${toSvgY(C.WING_CORNICE_TOP)}" class="dim-line" opacity="0.35"/>\n`;
 
-            svg += drawVertDim(leftDim3, 0, C.CENTRAL_WALL_TOP, '7.50', 0);
+            svg += drawVertDim(leftDim3, 0, C.CENTRAL_WALL_TOP, C.CENTRAL_WALL_TOP.toFixed(2), 0);
             svg += `  <line x1="${toSvgX(-C.PILASTER_INNER_X)}" y1="${toSvgY(C.CENTRAL_WALL_TOP)}" x2="${toSvgX(leftDim3 - 0.08)}" y2="${toSvgY(C.CENTRAL_WALL_TOP)}" class="dim-line" opacity="0.35"/>\n`;
 
-            svg += drawVertDim(leftDim4, 0, C.PILASTER_TOP, '7.70', 0);
+            svg += drawVertDim(leftDim4, 0, C.PILASTER_TOP, C.PILASTER_TOP.toFixed(2), 0);
             svg += `  <line x1="${toSvgX(-C.PILASTER_OUTER_X)}" y1="${toSvgY(C.PILASTER_TOP)}" x2="${toSvgX(leftDim4 - 0.08)}" y2="${toSvgY(C.PILASTER_TOP)}" class="dim-line" opacity="0.35"/>\n`;
 
             // =========================================================
@@ -1051,8 +1137,8 @@ class FacadeEngine {
             // =========================================================
             svg += `  <g id="radius-labels" opacity="0.96">\n`;
             // Radios de la puerta central: ubicados en el cuadrante derecho del arco para equilibrar el plano y no colisionar con la columna izquierda
-            svg += drawRadiusLeader(0.68, 4.12, 35, 0.48, 'R2.20', false, 1);
-            svg += drawRadiusLeader(0.82, 4.42, 35, 0.62, 'R2.44', false, 1);
+            svg += drawRadiusLeader(C.DOOR_OPENING * 0.28, C.DOOR_HEIGHT + C.DOOR_OPENING * 0.36, 35, 0.48, `R${C.DOOR_ARCH_R_IN.toFixed(2)}`, false, 1);
+            svg += drawRadiusLeader(C.DOOR_OPENING * 0.34, C.DOOR_HEIGHT + C.DOOR_OPENING * 0.48, 35, 0.62, `R${C.DOOR_ARCH_R_OUT.toFixed(2)}`, false, 1);
 
             // Radios de la ventana izquierda (con directrices paralelas y limpias según media_1788705439561.png)
             if (layout.windowPositionsLeft.length > 0) {
@@ -1062,21 +1148,21 @@ class FacadeEngine {
 
                 // Directriz R1.62: parte alta de la archivolta exterior (cerca de clave), sube a 135° despejada arriba
                 const rad162 = 126 * Math.PI / 180;
-                const r162TargetX = +(geomOut.c1X + 1.62 * Math.cos(rad162)).toFixed(3);
-                const r162TargetY = +(C.WINDOW_SPRING_Y + 1.62 * Math.sin(rad162)).toFixed(3);
-                svg += drawRadiusLeader(r162TargetX, r162TargetY, 135, 0.40, 'R1.62', true, -1);
+                const r162TargetX = +(geomOut.c1X + C.WINDOW_ARCH_R_OUT * Math.cos(rad162)).toFixed(3);
+                const r162TargetY = +(C.WINDOW_SPRING_Y + C.WINDOW_ARCH_R_OUT * Math.sin(rad162)).toFixed(3);
+                svg += drawRadiusLeader(r162TargetX, r162TargetY, 135, 0.40, `R${C.WINDOW_ARCH_R_OUT.toFixed(2)}`, true, -1);
 
                 // Directriz R1.38: parte media-baja del vano interior, sube a 135° paralela por debajo de R1.62
                 const rad138 = 146 * Math.PI / 180;
-                const r138TargetX = +(geomIn.c1X + 1.38 * Math.cos(rad138)).toFixed(3);
-                const r138TargetY = +(C.WINDOW_SPRING_Y + 1.38 * Math.sin(rad138)).toFixed(3);
-                svg += drawRadiusLeader(r138TargetX, r138TargetY, 135, 0.40, 'R1.38', true, -1);
+                const r138TargetX = +(geomIn.c1X + C.WINDOW_ARCH_R_IN * Math.cos(rad138)).toFixed(3);
+                const r138TargetY = +(C.WINDOW_SPRING_Y + C.WINDOW_ARCH_R_IN * Math.sin(rad138)).toFixed(3);
+                svg += drawRadiusLeader(r138TargetX, r138TargetY, 135, 0.40, `R${C.WINDOW_ARCH_R_IN.toFixed(2)}`, true, -1);
             }
 
             // Radio de cornisa R0.14
             const r014TargetX = -halfTotal - C.WING_CORNICE_R;
             const r014TargetY = C.WING_CORNICE_BOT + 0.10;
-            svg += drawRadiusLeader(r014TargetX, r014TargetY, 130, 0.45, 'R0.14', false, -1);
+            svg += drawRadiusLeader(r014TargetX, r014TargetY, 130, 0.45, `R${C.WING_CORNICE_R.toFixed(2)}`, false, -1);
             svg += `  </g>\n`;
 
             svg += `</g>\n\n`;
@@ -1111,6 +1197,7 @@ class FacadeEngine {
         return {
             svg,
             layout,
+            dimensions: C.DIMENSIONS,
             worldBounds: { minX, maxX, minY, maxY, worldWidth, worldHeight }
         };
     }
@@ -1122,6 +1209,7 @@ class FacadeEngine {
     generateDXF(options = {}) {
         options = this.normalizeOptions(options);
         const {
+            interiorWidth = this.CONSTANTS.DEFAULT_INTERIOR_WIDTH,
             totalWidth = this.CONSTANTS.DEFAULT_TOTAL_WIDTH,
             minFreeSpace = 1.50,
             distributionMode = 'auto',
@@ -1131,8 +1219,8 @@ class FacadeEngine {
             titleFontSize = 0.20
         } = options;
 
-        const layout = this.calculateLayout(totalWidth, minFreeSpace, distributionMode, manualCount);
-        const C = this.CONSTANTS;
+        const layout = this.calculateLayout(interiorWidth, minFreeSpace, distributionMode, manualCount);
+        const C = this.getFacadeConstants(interiorWidth);
         const halfTotal = totalWidth / 2.0;
         const winHalfOuter = layout.windowTotalWidth / 2.0;
 
@@ -1207,7 +1295,8 @@ class FacadeEngine {
         dxf += dxfLine(-doorHalfW, C.DOOR_HEIGHT, doorHalfW, C.DOOR_HEIGHT, 'CARPINTERIAS');
         dxf += dxfLine(0, 0, 0, C.DOOR_HEIGHT, 'CARPINTERIAS');
 
-        [2.20, 2.28, 2.36, 2.44].forEach(r => {
+        Array.from({ length: 4 }, (_, index) =>
+            C.DOOR_ARCH_R_IN + (C.DOOR_ARCH_R_OUT - C.DOOR_ARCH_R_IN) * index / 3).forEach(r => {
             const spanR = C.DOOR_OPENING + (r - C.DOOR_ARCH_R_IN) * 2.0;
             const arch = this.getPointedArchGeometry(0, spanR, C.DOOR_HEIGHT, r);
             const angStart1 = Math.atan2(0, (-spanR / 2) - arch.c1X) * (180 / Math.PI);
@@ -1253,7 +1342,8 @@ class FacadeEngine {
             dxf += dxfLine(cx + leafMargin + leafW, C.WINDOW_SILL_Y + leafMargin, cx + leafMargin + leafW, C.WINDOW_SPRING_Y - leafMargin, 'CARPINTERIAS');
 
             // 4 archivoltas concéntricas (R1.38 a R1.62) que descienden en las jambas
-            [1.38, 1.46, 1.54, 1.62].forEach(r => {
+            Array.from({ length: 4 }, (_, index) =>
+                C.WINDOW_ARCH_R_IN + (C.WINDOW_ARCH_R_OUT - C.WINDOW_ARCH_R_IN) * index / 3).forEach(r => {
                 const spanR = winW + (r - C.WINDOW_ARCH_R_IN) * 2.0;
                 const aGeom = this.getPointedArchGeometry(cx, spanR, C.WINDOW_SPRING_Y, r);
                 const aStart1 = Math.atan2(0, (cx - spanR / 2) - aGeom.c1X) * (180 / Math.PI);
@@ -1274,7 +1364,8 @@ class FacadeEngine {
         });
 
         // 6. Rótulo: el marco y los centros de texto coinciden con el SVG.
-        const { boxW: dBoxW, boxH: dBoxH, boxY: dBoxY, line1Y, line2Y } = this.getTitleGeometry(titleLine1, titleLine2, titleFontSize);
+        const titleCenterY = C.WING_CORNICE_TOP + C.DIMENSIONS.heightDifference * 0.30;
+        const { boxW: dBoxW, boxH: dBoxH, boxY: dBoxY, line1Y, line2Y } = this.getTitleGeometry(titleLine1, titleLine2, titleFontSize, titleCenterY);
         const centeredTitle = (line, y) => dxfText(0, y, titleFontSize, line, 'TEXTOS')
             + `72\n1\n73\n2\n11\n0.0000\n21\n${y.toFixed(4)}\n31\n0.0\n`;
         dxf += centeredTitle(titleLine1, line1Y);
@@ -1286,7 +1377,7 @@ class FacadeEngine {
 
         // 7. Cotas principales (AutoCAD DXF - Capa COTAS)
         const wingSpanDxf = +(halfTotal - C.PILASTER_OUTER_X).toFixed(2);
-        const topDimY = 8.35;
+        const topDimY = C.PILASTER_TOP + 0.65;
 
         // Cadena superior (y = 8.35):
         // Ala izquierda
@@ -1294,17 +1385,17 @@ class FacadeEngine {
         dxf += dxfText((-halfTotal - C.PILASTER_OUTER_X) / 2.0 - 0.25, topDimY + 0.08, 0.18, `${wingSpanDxf.toFixed(2)}`, 'COTAS');
         // Pilastra izquierda y directriz 0.26
         dxf += dxfLine(-C.PILASTER_OUTER_X, topDimY, -C.PILASTER_INNER_X, topDimY, 'COTAS');
-        dxf += dxfLine(-((C.PILASTER_OUTER_X + C.PILASTER_INNER_X) / 2.0), topDimY, -1.60, topDimY + 0.35, 'COTAS');
-        dxf += dxfLine(-1.60, topDimY + 0.35, -1.20, topDimY + 0.35, 'COTAS');
-        dxf += dxfText(-1.50, topDimY + 0.40, 0.16, '0.26', 'COTAS');
+        dxf += dxfLine(-((C.PILASTER_OUTER_X + C.PILASTER_INNER_X) / 2.0), topDimY, -C.PILASTER_INNER_X, topDimY + 0.35, 'COTAS');
+        dxf += dxfLine(-C.PILASTER_INNER_X, topDimY + 0.35, -0.80, topDimY + 0.35, 'COTAS');
+        dxf += dxfText(-C.PILASTER_OUTER_X + 0.05, topDimY + 0.40, 0.16, C.PILASTER_WIDTH.toFixed(2), 'COTAS');
         // Tramo central 3.40
         dxf += dxfLine(-C.PILASTER_INNER_X, topDimY, C.PILASTER_INNER_X, topDimY, 'COTAS');
-        dxf += dxfText(-0.25, topDimY + 0.08, 0.18, '3.40', 'COTAS');
+        dxf += dxfText(-0.25, topDimY + 0.08, 0.18, (C.PILASTER_INNER_X * 2).toFixed(2), 'COTAS');
         // Pilastra derecha y directriz 0.26
         dxf += dxfLine(C.PILASTER_INNER_X, topDimY, C.PILASTER_OUTER_X, topDimY, 'COTAS');
-        dxf += dxfLine((C.PILASTER_INNER_X + C.PILASTER_OUTER_X) / 2.0, topDimY, 1.62, topDimY + 0.35, 'COTAS');
-        dxf += dxfLine(1.62, topDimY + 0.35, 2.05, topDimY + 0.35, 'COTAS');
-        dxf += dxfText(1.72, topDimY + 0.40, 0.16, '0.26', 'COTAS');
+        dxf += dxfLine((C.PILASTER_INNER_X + C.PILASTER_OUTER_X) / 2.0, topDimY, C.PILASTER_INNER_X, topDimY + 0.35, 'COTAS');
+        dxf += dxfLine(C.PILASTER_INNER_X, topDimY + 0.35, 0.80, topDimY + 0.35, 'COTAS');
+        dxf += dxfText(C.PILASTER_INNER_X + 0.05, topDimY + 0.40, 0.16, C.PILASTER_WIDTH.toFixed(2), 'COTAS');
         // Ala derecha
         dxf += dxfLine(C.PILASTER_OUTER_X, topDimY, halfTotal, topDimY, 'COTAS');
         dxf += dxfText((C.PILASTER_OUTER_X + halfTotal) / 2.0 - 0.25, topDimY + 0.08, 0.18, `${wingSpanDxf.toFixed(2)}`, 'COTAS');
@@ -1318,41 +1409,41 @@ class FacadeEngine {
         dxf += dxfLine(halfTotal, C.WING_CORNICE_TOP, halfTotal, topDimY + 0.10, 'COTAS');
 
         // Cadena inferior (y = 7.85): 1.70 y 1.70 al eje
-        const innerDimY = 7.85;
-        dxf += dxfLine(-1.70, innerDimY, 0, innerDimY, 'COTAS');
-        dxf += dxfText(-0.95, innerDimY + 0.08, 0.18, '1.70', 'COTAS');
-        dxf += dxfLine(0, innerDimY, 1.70, innerDimY, 'COTAS');
-        dxf += dxfText(0.75, innerDimY + 0.08, 0.18, '1.70', 'COTAS');
-        dxf += dxfLine(-1.70, C.PILASTER_TOP, -1.70, innerDimY + 0.08, 'COTAS');
-        dxf += dxfLine(1.70, C.PILASTER_TOP, 1.70, innerDimY + 0.08, 'COTAS');
+        const innerDimY = C.PILASTER_TOP + 0.15;
+        dxf += dxfLine(-C.PILASTER_INNER_X, innerDimY, 0, innerDimY, 'COTAS');
+        dxf += dxfText(-C.PILASTER_INNER_X / 2 - 0.10, innerDimY + 0.08, 0.18, C.PILASTER_INNER_X.toFixed(2), 'COTAS');
+        dxf += dxfLine(0, innerDimY, C.PILASTER_INNER_X, innerDimY, 'COTAS');
+        dxf += dxfText(C.PILASTER_INNER_X / 2 - 0.10, innerDimY + 0.08, 0.18, C.PILASTER_INNER_X.toFixed(2), 'COTAS');
+        dxf += dxfLine(-C.PILASTER_INNER_X, C.PILASTER_TOP, -C.PILASTER_INNER_X, innerDimY + 0.08, 'COTAS');
+        dxf += dxfLine(C.PILASTER_INNER_X, C.PILASTER_TOP, C.PILASTER_INNER_X, innerDimY + 0.08, 'COTAS');
 
         // Cotas verticales izquierda escalonadas en 3 niveles (3.62, 1.20, 0.20) sin solapamiento
         const leftColDimX = -2.18;
         dxf += dxfLine(leftColDimX, C.PILASTER_BOTTOM, leftColDimX, C.PILASTER_TOP, 'COTAS');
         dxf += dxfLine(-C.PILASTER_OUTER_X, C.PILASTER_TOP, leftColDimX - 0.10, C.PILASTER_TOP, 'COTAS');
         dxf += dxfLine(-C.PILASTER_OUTER_X, C.PILASTER_BOTTOM, leftColDimX - 0.10, C.PILASTER_BOTTOM, 'COTAS');
-        dxf += dxfText(leftColDimX - 0.15, (C.PILASTER_BOTTOM + C.PILASTER_TOP) / 2.0 - 0.20, 0.18, '3.62', 'COTAS', 90);
+        dxf += dxfText(leftColDimX - 0.15, (C.PILASTER_BOTTOM + C.PILASTER_TOP) / 2.0 - 0.20, 0.18, C.PILASTER_HEIGHT.toFixed(2), 'COTAS', 90);
 
         // Nivel 2: Cota 1.20m de cornisa lateral a muro central
         const leftCrownDimX1 = -2.55;
         dxf += dxfLine(leftCrownDimX1, C.WING_CORNICE_TOP, leftCrownDimX1, C.CENTRAL_WALL_TOP, 'COTAS');
         dxf += dxfLine(-C.PILASTER_OUTER_X, C.WING_CORNICE_TOP, leftCrownDimX1 - 0.10, C.WING_CORNICE_TOP, 'COTAS');
         dxf += dxfLine(-C.PILASTER_INNER_X, C.CENTRAL_WALL_TOP, leftCrownDimX1 - 0.10, C.CENTRAL_WALL_TOP, 'COTAS');
-        dxf += dxfText(leftCrownDimX1 - 0.15, (C.WING_CORNICE_TOP + C.CENTRAL_WALL_TOP) / 2.0 - 0.20, 0.18, '1.20', 'COTAS', 90);
+        dxf += dxfText(leftCrownDimX1 - 0.15, (C.WING_CORNICE_TOP + C.CENTRAL_WALL_TOP) / 2.0 - 0.20, 0.18, (C.CENTRAL_WALL_TOP - C.WING_CORNICE_TOP).toFixed(2), 'COTAS', 90);
 
         // Nivel 3: Cota 0.20m de muro central a remate de pilastra
         const leftCrownDimX2 = -2.90;
         dxf += dxfLine(leftCrownDimX2, C.CENTRAL_WALL_TOP, leftCrownDimX2, C.PILASTER_TOP, 'COTAS');
         dxf += dxfLine(-C.PILASTER_INNER_X, C.CENTRAL_WALL_TOP, leftCrownDimX2 - 0.10, C.CENTRAL_WALL_TOP, 'COTAS');
         dxf += dxfLine(-C.PILASTER_OUTER_X, C.PILASTER_TOP, leftCrownDimX2 - 0.10, C.PILASTER_TOP, 'COTAS');
-        dxf += dxfText(leftCrownDimX2 - 0.15, (C.CENTRAL_WALL_TOP + C.PILASTER_TOP) / 2.0 - 0.10, 0.18, '0.20', 'COTAS', 90);
+        dxf += dxfText(leftCrownDimX2 - 0.15, (C.CENTRAL_WALL_TOP + C.PILASTER_TOP) / 2.0 - 0.10, 0.18, (C.PILASTER_TOP - C.CENTRAL_WALL_TOP).toFixed(2), 'COTAS', 90);
 
         // Cota vertical derecha (1.40)
-        const rightColDimX = 2.28;
+        const rightColDimX = C.PILASTER_OUTER_X + 0.32;
         dxf += dxfLine(rightColDimX, C.WING_CORNICE_TOP, rightColDimX, C.PILASTER_TOP, 'COTAS');
         dxf += dxfLine(C.PILASTER_OUTER_X, C.PILASTER_TOP, rightColDimX + 0.10, C.PILASTER_TOP, 'COTAS');
         dxf += dxfLine(C.PILASTER_OUTER_X, C.WING_CORNICE_TOP, rightColDimX + 0.10, C.WING_CORNICE_TOP, 'COTAS');
-        dxf += dxfText(rightColDimX + 0.20, 6.90, 0.18, '1.40', 'COTAS', 90);
+        dxf += dxfText(rightColDimX + 0.20, (C.WING_CORNICE_TOP + C.PILASTER_TOP) / 2 - 0.15, 0.18, C.DIMENSIONS.heightDifference.toFixed(2), 'COTAS', 90);
 
         // Ventana derecha y cotas de ala (dinámicas y simétricas)
         if (layout.windowPositionsRight.length > 0) {
@@ -1372,7 +1463,7 @@ class FacadeEngine {
             dxf += dxfText((C.PILASTER_OUTER_X + winInM) / 2.0 - 0.20, C.WINDOW_SILL_Y + 0.05, 0.18, `${dxfIntMargin.toFixed(2)}`, 'COTAS');
 
             // Cota de ala en paño izquierdo a y = 5.75m (fiel a media_1788703759354.png: 3.29m a L=10.50m)
-            const dxfWingDimY = 5.75;
+            const dxfWingDimY = C.WING_CORNICE_TOP - 0.55;
             dxf += dxfLine(-halfTotal, dxfWingDimY, -C.PILASTER_OUTER_X, dxfWingDimY, 'COTAS');
             dxf += dxfLine(-halfTotal, C.WING_CORNICE_TOP, -halfTotal, dxfWingDimY + 0.12, 'COTAS');
             dxf += dxfLine(-C.PILASTER_OUTER_X, C.WING_CORNICE_TOP, -C.PILASTER_OUTER_X, dxfWingDimY + 0.12, 'COTAS');
@@ -1403,22 +1494,23 @@ class FacadeEngine {
             // evitando intersecarse con las cotas horizontales del paño derecho (0.61m)
             if (layout.windowPositionsLeft.length > 0) {
                 const wLeftOuterM = +(layout.windowPositionsLeft[0] - winHalfOuter).toFixed(3);
-                dxf += dxfLine(wLeftOuterM - 0.22, C.WINDOW_SILL_Y, wLeftOuterM - 0.22, C.WINDOW_SPRING_Y, 'COTAS');
                 dxf += dxfLine(wLeftOuterM, C.WINDOW_SILL_Y, wLeftOuterM - 0.27, C.WINDOW_SILL_Y, 'COTAS');
-                dxf += dxfLine(wLeftOuterM, C.WINDOW_SPRING_Y, wLeftOuterM - 0.27, C.WINDOW_SPRING_Y, 'COTAS');
-                dxf += dxfText(wLeftOuterM - 0.38, 2.00, 0.18, '1.90', 'COTAS', 90);
+                dxf += dxfLine(wLeftOuterM, C.WINDOW_SILL_Y + C.WINDOW_TOTAL_HEIGHT, wLeftOuterM - 0.27, C.WINDOW_SILL_Y + C.WINDOW_TOTAL_HEIGHT, 'COTAS');
+                dxf += dxfLine(wLeftOuterM - 0.22, C.WINDOW_SILL_Y, wLeftOuterM - 0.22, C.WINDOW_SILL_Y + C.WINDOW_TOTAL_HEIGHT, 'COTAS');
+                dxf += dxfText(wLeftOuterM - 0.38, C.WINDOW_SILL_Y + C.WINDOW_TOTAL_HEIGHT / 2 - 0.15, 0.18, C.WINDOW_TOTAL_HEIGHT.toFixed(2), 'COTAS', 90);
             }
 
             // Cota horizontal 1.60m
             dxf += dxfLine(lastWinC - winW / 2.0, C.WINDOW_SILL_Y - 0.30, lastWinC + winW / 2.0, C.WINDOW_SILL_Y - 0.30, 'COTAS');
-            dxf += dxfText(lastWinC - 0.20, C.WINDOW_SILL_Y - 0.25, 0.18, '1.60', 'COTAS');
+            dxf += dxfText(lastWinC - 0.20, C.WINDOW_SILL_Y - 0.25, 0.18, C.WINDOW_WIDTH.toFixed(2), 'COTAS');
         }
 
         // Cota horizontal puerta central 2.40m (a y = 3.25m)
-        dxf += dxfLine(-doorHalfW, 3.25, doorHalfW, 3.25, 'COTAS');
-        dxf += dxfLine(-doorHalfW, C.DOOR_HEIGHT, -doorHalfW, 3.35, 'COTAS');
-        dxf += dxfLine(doorHalfW, C.DOOR_HEIGHT, doorHalfW, 3.35, 'COTAS');
-        dxf += dxfText(-0.20, 3.32, 0.18, `${C.DOOR_OPENING.toFixed(2)}`, 'COTAS');
+        const doorDimY = C.DOOR_TOTAL_HEIGHT + 0.30;
+        dxf += dxfLine(-doorHalfW, doorDimY, doorHalfW, doorDimY, 'COTAS');
+        dxf += dxfLine(-doorHalfW, C.DOOR_HEIGHT, -doorHalfW, doorDimY + 0.10, 'COTAS');
+        dxf += dxfLine(doorHalfW, C.DOOR_HEIGHT, doorHalfW, doorDimY + 0.10, 'COTAS');
+        dxf += dxfText(-0.20, doorDimY + 0.07, 0.18, `${C.DOOR_OPENING.toFixed(2)}`, 'COTAS');
 
         // Cotas verticales generales en cascada exterior izquierda (3.00, 6.30, 7.50, 7.70)
         const leftDim1 = -halfTotal - 0.60;
@@ -1427,25 +1519,25 @@ class FacadeEngine {
         const leftDim4 = -halfTotal - 2.55;
 
         // Cota 3.00 (Arranque arcos)
-        dxf += dxfLine(leftDim1, 0, leftDim1, C.WINDOW_SPRING_Y, 'COTAS');
+        dxf += dxfLine(leftDim1, 0, leftDim1, C.DOOR_TOTAL_HEIGHT, 'COTAS');
         dxf += dxfLine(-halfTotal, 0, leftDim1 - 0.10, 0, 'COTAS');
-        dxf += dxfLine(-halfTotal, C.WINDOW_SPRING_Y, leftDim1 - 0.10, C.WINDOW_SPRING_Y, 'COTAS');
-        dxf += dxfText(leftDim1 - 0.15, C.WINDOW_SPRING_Y / 2.0 - 0.20, 0.18, '3.00', 'COTAS', 90);
+        dxf += dxfLine(-halfTotal, C.DOOR_TOTAL_HEIGHT, leftDim1 - 0.10, C.DOOR_TOTAL_HEIGHT, 'COTAS');
+        dxf += dxfText(leftDim1 - 0.15, C.DOOR_TOTAL_HEIGHT / 2.0 - 0.20, 0.18, C.DOOR_TOTAL_HEIGHT.toFixed(2), 'COTAS', 90);
 
         // Cota 6.30 (Cornisa lateral)
         dxf += dxfLine(leftDim2, 0, leftDim2, C.WING_CORNICE_TOP, 'COTAS');
         dxf += dxfLine(-halfTotal, C.WING_CORNICE_TOP, leftDim2 - 0.10, C.WING_CORNICE_TOP, 'COTAS');
-        dxf += dxfText(leftDim2 - 0.15, C.WING_CORNICE_TOP / 2.0 - 0.20, 0.18, '6.30', 'COTAS', 90);
+        dxf += dxfText(leftDim2 - 0.15, C.WING_CORNICE_TOP / 2.0 - 0.20, 0.18, C.WING_CORNICE_TOP.toFixed(2), 'COTAS', 90);
 
         // Cota 7.50 (Muro central)
         dxf += dxfLine(leftDim3, 0, leftDim3, C.CENTRAL_WALL_TOP, 'COTAS');
         dxf += dxfLine(-C.PILASTER_INNER_X, C.CENTRAL_WALL_TOP, leftDim3 - 0.10, C.CENTRAL_WALL_TOP, 'COTAS');
-        dxf += dxfText(leftDim3 - 0.15, C.CENTRAL_WALL_TOP / 2.0 - 0.20, 0.18, '7.50', 'COTAS', 90);
+        dxf += dxfText(leftDim3 - 0.15, C.CENTRAL_WALL_TOP / 2.0 - 0.20, 0.18, C.CENTRAL_WALL_TOP.toFixed(2), 'COTAS', 90);
 
         // Cota 7.70 (Remate pilastra)
         dxf += dxfLine(leftDim4, 0, leftDim4, C.PILASTER_TOP, 'COTAS');
         dxf += dxfLine(-C.PILASTER_OUTER_X, C.PILASTER_TOP, leftDim4 - 0.10, C.PILASTER_TOP, 'COTAS');
-        dxf += dxfText(leftDim4 - 0.15, C.PILASTER_TOP / 2.0 - 0.20, 0.18, '7.70', 'COTAS', 90);
+        dxf += dxfText(leftDim4 - 0.15, C.PILASTER_TOP / 2.0 - 0.20, 0.18, C.PILASTER_TOP.toFixed(2), 'COTAS', 90);
 
         // Cotas verticales derecha de cornisa y moldura (escalonadas en 2 niveles para evitar solapamiento entre 1.05 y 0.20)
         const rightDimX = halfTotal + 0.55;
@@ -1453,19 +1545,19 @@ class FacadeEngine {
         dxf += dxfLine(rightDimX, 0, rightDimX, C.WING_MOULDING_Y, 'COTAS');
         dxf += dxfLine(halfTotal, 0, rightDimX + 0.10, 0, 'COTAS');
         dxf += dxfLine(halfTotal, C.WING_MOULDING_Y, rightDimX + 0.10, C.WING_MOULDING_Y, 'COTAS');
-        dxf += dxfText(rightDimX + 0.20, C.WING_MOULDING_Y / 2.0 - 0.20, 0.18, '5.05', 'COTAS', 90);
+        dxf += dxfText(rightDimX + 0.20, C.WING_MOULDING_Y / 2.0 - 0.20, 0.18, C.WING_MOULDING_Y.toFixed(2), 'COTAS', 90);
 
         // 1.05m de moldura a bajo cornisa
         dxf += dxfLine(rightDimX, C.WING_MOULDING_Y, rightDimX, C.WING_CORNICE_BOT, 'COTAS');
         dxf += dxfLine(halfTotal, C.WING_CORNICE_BOT, rightDimX + 0.10, C.WING_CORNICE_BOT, 'COTAS');
-        dxf += dxfText(rightDimX + 0.20, (C.WING_MOULDING_Y + C.WING_CORNICE_BOT) / 2.0 - 0.20, 0.18, '1.05', 'COTAS', 90);
+        dxf += dxfText(rightDimX + 0.20, (C.WING_MOULDING_Y + C.WING_CORNICE_BOT) / 2.0 - 0.20, 0.18, (C.WING_CORNICE_BOT - C.WING_MOULDING_Y).toFixed(2), 'COTAS', 90);
 
         // 0.20m espesor cornisa en segundo nivel exterior escalonado
         const rightCorniceDimX2 = halfTotal + 0.95;
         dxf += dxfLine(rightCorniceDimX2, C.WING_CORNICE_BOT, rightCorniceDimX2, C.WING_CORNICE_TOP, 'COTAS');
         dxf += dxfLine(halfTotal, C.WING_CORNICE_BOT, rightCorniceDimX2 + 0.10, C.WING_CORNICE_BOT, 'COTAS');
         dxf += dxfLine(halfTotal, C.WING_CORNICE_TOP, rightCorniceDimX2 + 0.10, C.WING_CORNICE_TOP, 'COTAS');
-        dxf += dxfText(rightCorniceDimX2 + 0.20, (C.WING_CORNICE_BOT + C.WING_CORNICE_TOP) / 2.0 - 0.10, 0.18, '0.20', 'COTAS', 90);
+        dxf += dxfText(rightCorniceDimX2 + 0.20, (C.WING_CORNICE_BOT + C.WING_CORNICE_TOP) / 2.0 - 0.10, 0.18, C.DIMENSIONS.mouldingThickness.toFixed(2), 'COTAS', 90);
 
         // Directrices de radios en DXF (Capa COTAS)
         const dxfRadiusLeader = (targetX, targetY, angleDeg, length, text) => {
@@ -1490,22 +1582,22 @@ class FacadeEngine {
             const geomOut = this.getPointedArchGeometry(wLeftRef, C.WINDOW_WIDTH + C.WINDOW_MOULDING_THICK * 2.0, C.WINDOW_SPRING_Y, C.WINDOW_ARCH_R_OUT);
 
             const rad162 = 126 * Math.PI / 180;
-            const r162TargetX = +(geomOut.c1X + 1.62 * Math.cos(rad162)).toFixed(3);
-            const r162TargetY = +(C.WINDOW_SPRING_Y + 1.62 * Math.sin(rad162)).toFixed(3);
-            dxf += dxfRadiusLeader(r162TargetX, r162TargetY, 135, 0.40, 'R1.62');
+            const r162TargetX = +(geomOut.c1X + C.WINDOW_ARCH_R_OUT * Math.cos(rad162)).toFixed(3);
+            const r162TargetY = +(C.WINDOW_SPRING_Y + C.WINDOW_ARCH_R_OUT * Math.sin(rad162)).toFixed(3);
+            dxf += dxfRadiusLeader(r162TargetX, r162TargetY, 135, 0.40, `R${C.WINDOW_ARCH_R_OUT.toFixed(2)}`);
 
             const rad138 = 146 * Math.PI / 180;
-            const r138TargetX = +(geomIn.c1X + 1.38 * Math.cos(rad138)).toFixed(3);
-            const r138TargetY = +(C.WINDOW_SPRING_Y + 1.38 * Math.sin(rad138)).toFixed(3);
-            dxf += dxfRadiusLeader(r138TargetX, r138TargetY, 135, 0.40, 'R1.38');
+            const r138TargetX = +(geomIn.c1X + C.WINDOW_ARCH_R_IN * Math.cos(rad138)).toFixed(3);
+            const r138TargetY = +(C.WINDOW_SPRING_Y + C.WINDOW_ARCH_R_IN * Math.sin(rad138)).toFixed(3);
+            dxf += dxfRadiusLeader(r138TargetX, r138TargetY, 135, 0.40, `R${C.WINDOW_ARCH_R_IN.toFixed(2)}`);
         }
 
         // Radios de la portada central (R2.20 y R2.44) en lado derecho para equilibrar dibujo y evitar solape con pilastra
-        dxf += dxfRadiusLeader(0.68, 4.12, 35, 0.52, 'R2.20');
-        dxf += dxfRadiusLeader(0.82, 4.42, 35, 0.55, 'R2.44');
+        dxf += dxfRadiusLeader(C.DOOR_OPENING * 0.28, C.DOOR_HEIGHT + C.DOOR_OPENING * 0.36, 35, 0.52, `R${C.DOOR_ARCH_R_IN.toFixed(2)}`);
+        dxf += dxfRadiusLeader(C.DOOR_OPENING * 0.34, C.DOOR_HEIGHT + C.DOOR_OPENING * 0.48, 35, 0.55, `R${C.DOOR_ARCH_R_OUT.toFixed(2)}`);
 
         // Radio de cornisa R0.14
-        dxf += dxfRadiusLeader(-halfTotal - C.WING_CORNICE_R, C.WING_CORNICE_BOT + 0.10, 130, 0.60, 'R0.14');
+        dxf += dxfRadiusLeader(-halfTotal - C.WING_CORNICE_R, C.WING_CORNICE_BOT + 0.10, 130, 0.60, `R${C.WING_CORNICE_R.toFixed(2)}`);
 
         // Cotas inferiores generales
         const portalWingW = +(halfTotal - C.PORTAL_WIDTH / 2.0).toFixed(2);
