@@ -63,19 +63,34 @@ test('alturas y sobresaliente gobiernan la geometría', () => {
         near(c.PILASTER_TOP, d.maxHeight);
         near(c.PILASTER_TOP - c.WING_CORNICE_TOP, d.heightDifference);
         near(c.PILASTER_OUTER_X * 2, d.projectionWidth);
-        near(c.PILASTER_WIDTH, 0.19);
+        assert.ok(c.PILASTER_WIDTH >= 0.19);
+        assert.ok(c.WINDOW_MOULDING_THICK >= 0.19);
     }
 });
 
-test('el alto de puerta y ventana llega hasta la punta del arco', () => {
+test('el alto tabulado gobierna el cuerpo recto y la ojiva se suma', () => {
     for (const width of [6, 7.3, 9, 10]) {
         const d = engine.getFacadeDimensions(width);
         const c = engine.getFacadeConstants(width);
         const door = engine.getPointedArchGeometry(0, c.DOOR_OPENING, c.DOOR_HEIGHT, c.DOOR_ARCH_R_IN);
         const window = engine.getPointedArchGeometry(0, c.WINDOW_WIDTH, c.WINDOW_SPRING_Y, c.WINDOW_ARCH_R_IN);
-        near(door.apexY, d.doorHeight);
-        near(window.apexY - c.WINDOW_SILL_Y, d.windowHeight);
+        near(c.DOOR_HEIGHT, d.doorHeight);
+        near(c.WINDOW_RECT_HEIGHT, d.windowHeight);
+        near(c.WINDOW_SPRING_Y - c.WINDOW_SILL_Y, d.windowHeight);
+        assert.ok(door.apexY > d.doorHeight);
+        assert.ok(window.apexY - c.WINDOW_SILL_Y > d.windowHeight);
     }
+});
+
+test('el ancho de 10 m recupera las proporciones de la primera fachada', () => {
+    const c = engine.getFacadeConstants(10);
+    near(c.PORTAL_WIDTH, 2.92);
+    near(c.PILASTER_WIDTH, 0.26);
+    near(c.DOOR_ARCH_R_IN, 2.20);
+    near(c.WINDOW_ARCH_R_IN, 1.38);
+    near(c.WINDOW_MOULDING_THICK, 0.24);
+    near(c.DOOR_HEIGHT, 2.80);
+    near(c.WINDOW_RECT_HEIGHT, 1.70);
 });
 
 test('la distribución permanece simétrica y dentro de cada ala', () => {

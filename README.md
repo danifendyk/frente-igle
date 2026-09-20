@@ -7,7 +7,7 @@ Editor paramétrico del frente de una iglesia. La geometría cambia según una t
 Abre `index.html` en un navegador actual. No necesita instalación, conexión a Internet ni servicios externos.
 
 - Ajusta el ancho interior entre 6 y 10 m, en pasos de 0,05 m, o elige una de las cinco filas de referencia. El ancho exterior suma siempre 0,40 m.
-- Las alturas, la puerta, las ventanas y el cuerpo central sobresaliente se interpolan entre las filas de la tabla. El alto de puertas y ventanas se mide desde su base hasta la punta del arco.
+- Las alturas, la puerta, las ventanas y el cuerpo central sobresaliente se interpolan entre las filas de la tabla. El alto tabulado de puertas y ventanas controla el cuerpo recto hasta el arranque del arco; la ojiva se suma conservando la proporción del diseño original.
 - Selecciona distribución automática, separación fija o cantidad manual. El aviso indica si la distribución cabe y cumple la separación elegida.
 - Abre **Presentación y capas** para cambiar el tema, las cotas, la cuadrícula y el rótulo.
 - Abre **Ficha de medidas** para consultar márgenes y dimensiones.
@@ -32,6 +32,6 @@ En el plano: arrastra para mover, usa la rueda para ampliar o reducir y haz dobl
 
 Con Node.js instalado, ejecuta `npm test` para comprobar simetría, límites, arcos, rótulos y cotas; `npm run check` verifica la sintaxis. No es necesario instalar paquetes.
 
-Las cinco filas originales están en `FacadeEngine.RELATION_TABLE`. Los valores intermedios usan interpolación lineal por tramos, por lo que cada fila de 6, 7, 8, 9 y 10 m se conserva exactamente. La altura mínima gobierna las alas laterales; la máxima gobierna el remate central; su diferencia define el sobresaliente. Las molduras usan provisionalmente 0,19 m.
+Las cinco filas originales están en `FacadeEngine.RELATION_TABLE`. Los valores intermedios usan interpolación lineal por tramos, por lo que cada fila de 6, 7, 8, 9 y 10 m se conserva exactamente. La altura mínima gobierna las alas laterales; la máxima gobierna el remate central; su diferencia define el sobresaliente. La composición interna mantiene las relaciones de la primera fachada. Las molduras parten de un mínimo provisional de 0,19 m y recuperan gradualmente el espesor original.
 
 La separación de ventanas se mide entre las caras exteriores de las molduras. El modo automático divide cada ala en módulos iguales; agrega ventanas cuando la nueva distribución cumple la separación mínima. El modo de separación fija conserva esa cantidad y centra el conjunto con la distancia seleccionada entre ventanas.

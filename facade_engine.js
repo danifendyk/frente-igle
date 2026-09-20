@@ -102,46 +102,62 @@ class FacadeEngine {
 
     getFacadeConstants(interiorWidth) {
         const d = this.getFacadeDimensions(interiorWidth);
-        const moulding = d.mouldingThickness;
-        const archRadius = width => width * 0.55;
+        const minMoulding = d.mouldingThickness;
+        // La primera fachada es la plantilla canónica. Sus radios, antepecho,
+        // pilastras y molduras se escalan; la tabla sólo gobierna las medidas
+        // principales. Así se conserva el ritmo visual del diseño original.
+        const pilasterWidth = Math.max(minMoulding, 0.26 * d.projectionWidth / 3.80);
+        const archMoulding = Math.max(minMoulding, 0.24 * d.windowWidth / 1.60);
+        const corniceThickness = Math.max(minMoulding, 0.20 * d.minHeight / 5.90);
+        const doorRadius = d.doorWidth * (2.20 / 2.40);
+        const windowRadius = d.windowWidth * (1.38 / 1.60);
         const archRise = (width, radius) => Math.sqrt(radius * width - width * width / 4);
-        const doorRadius = archRadius(d.doorWidth);
-        const windowRadius = archRadius(d.windowWidth);
-        const sillY = 0.60 + d.interiorWidth * 0.05;
-        const doorSpringY = d.doorHeight - archRise(d.doorWidth, doorRadius);
-        const windowSpringY = sillY + d.windowHeight - archRise(d.windowWidth, windowRadius);
-        const wingCorniceBottom = d.minHeight - moulding;
-        const wingMouldingY = wingCorniceBottom - d.heightDifference * 0.75;
-        const pilasterBottom = wingMouldingY - d.heightDifference * 0.65;
+        const doorArchRise = archRise(d.doorWidth, doorRadius);
+        const windowArchRise = archRise(d.windowWidth, windowRadius);
+        const sillY = d.minHeight * (1.10 / 6.30);
+        const doorSpringY = d.doorHeight;
+        const windowSpringY = sillY + d.windowHeight;
+        const wingCorniceBottom = d.minHeight - corniceThickness;
+        const wingMouldingY = Math.max(
+            d.minHeight * (5.05 / 6.30),
+            doorSpringY + doorArchRise + 0.08
+        );
+        const pilasterBottom = d.maxHeight * (4.08 / 7.70);
+
+        d.actualMouldingThickness = +archMoulding.toFixed(4);
+        d.pilasterWidth = +pilasterWidth.toFixed(4);
+        d.corniceThickness = +corniceThickness.toFixed(4);
+        d.doorTotalHeight = +(doorSpringY + doorArchRise).toFixed(4);
+        d.windowTotalHeight = +(d.windowHeight + windowArchRise).toFixed(4);
 
         return {
             ...this.CONSTANTS,
             DIMENSIONS: d,
-            PORTAL_WIDTH: d.doorWidth + moulding * 2,
+            PORTAL_WIDTH: d.doorWidth + pilasterWidth * 2,
             DOOR_OPENING: d.doorWidth,
             DOOR_HEIGHT: doorSpringY,
-            DOOR_TOTAL_HEIGHT: d.doorHeight,
+            DOOR_TOTAL_HEIGHT: doorSpringY + doorArchRise,
             DOOR_ARCH_R_IN: doorRadius,
-            DOOR_ARCH_R_OUT: doorRadius + moulding,
-            CENTRAL_WALL_TOP: d.maxHeight - moulding,
-            PILASTER_WIDTH: moulding,
+            DOOR_ARCH_R_OUT: doorRadius + archMoulding,
+            CENTRAL_WALL_TOP: d.maxHeight - corniceThickness,
+            PILASTER_WIDTH: pilasterWidth,
             PILASTER_OUTER_X: d.projectionWidth / 2,
-            PILASTER_INNER_X: d.projectionWidth / 2 - moulding,
+            PILASTER_INNER_X: d.projectionWidth / 2 - pilasterWidth,
             PILASTER_TOP: d.maxHeight,
             PILASTER_BOTTOM: pilasterBottom,
             PILASTER_HEIGHT: d.maxHeight - pilasterBottom,
             WING_CORNICE_TOP: d.minHeight,
             WING_CORNICE_BOT: wingCorniceBottom,
-            WING_CORNICE_R: Math.max(0.10, moulding * 0.70),
+            WING_CORNICE_R: Math.max(0.10, 0.14 * d.minHeight / 5.90),
             WING_MOULDING_Y: wingMouldingY,
             WINDOW_WIDTH: d.windowWidth,
-            WINDOW_RECT_HEIGHT: windowSpringY - sillY,
+            WINDOW_RECT_HEIGHT: d.windowHeight,
             WINDOW_SPRING_Y: windowSpringY,
             WINDOW_SILL_Y: sillY,
-            WINDOW_TOTAL_HEIGHT: d.windowHeight,
+            WINDOW_TOTAL_HEIGHT: d.windowHeight + windowArchRise,
             WINDOW_ARCH_R_IN: windowRadius,
-            WINDOW_ARCH_R_OUT: windowRadius + moulding,
-            WINDOW_MOULDING_THICK: moulding
+            WINDOW_ARCH_R_OUT: windowRadius + archMoulding,
+            WINDOW_MOULDING_THICK: archMoulding
         };
     }
 
@@ -668,7 +684,7 @@ class FacadeEngine {
 
         // Ornamento central (cruz ojival)
         svg += `  <g id="ornament-cross" stroke="${pal.wallStroke}" stroke-width="0.028" opacity="0.85">\n`;
-        const crossY = C.DOOR_TOTAL_HEIGHT + Math.max(0.30, (C.WING_MOULDING_Y - C.DOOR_TOTAL_HEIGHT) * 0.45);
+        const crossY = doorH + (C.DOOR_TOTAL_HEIGHT - doorH) * 0.43;
         svg += `    <line x1="${toSvgX(-0.12)}" y1="${toSvgY(crossY)}" x2="${toSvgX(0.12)}" y2="${toSvgY(crossY)}"/>\n`;
         svg += `    <line x1="${toSvgX(0)}" y1="${toSvgY(crossY - 0.16)}" x2="${toSvgX(0)}" y2="${toSvgY(crossY + 0.16)}"/>\n`;
         svg += `    <circle cx="${toSvgX(0)}" cy="${toSvgY(crossY)}" r="0.045" fill="none" stroke="${pal.wallStroke}" stroke-width="0.02"/>\n`;
@@ -1034,8 +1050,8 @@ class FacadeEngine {
 
                 // Cota 1.90: vertical en el costado exterior de la ventana izquierda (sin colisión con márgenes de ala)
                 const dimWinVertX = +(wLeftOuterM - 0.22).toFixed(3);
-                const windowTopY = C.WINDOW_SILL_Y + C.WINDOW_TOTAL_HEIGHT;
-                svg += drawVertDim(dimWinVertX, C.WINDOW_SILL_Y, windowTopY, C.WINDOW_TOTAL_HEIGHT.toFixed(2), 0);
+                const windowTopY = C.WINDOW_SPRING_Y;
+                svg += drawVertDim(dimWinVertX, C.WINDOW_SILL_Y, windowTopY, C.WINDOW_RECT_HEIGHT.toFixed(2), 0);
                 svg += `  <line x1="${toSvgX(wLeftOuterM)}" y1="${toSvgY(windowTopY)}" x2="${toSvgX(dimWinVertX - 0.08)}" y2="${toSvgY(windowTopY)}" class="dim-line" opacity="0.35"/>\n`;
                 svg += `  <line x1="${toSvgX(wLeftOuterM)}" y1="${toSvgY(C.WINDOW_SILL_Y)}" x2="${toSvgX(dimWinVertX - 0.08)}" y2="${toSvgY(C.WINDOW_SILL_Y)}" class="dim-line" opacity="0.35"/>\n`;
 
@@ -1082,7 +1098,7 @@ class FacadeEngine {
 
             // Cota 0.20 de cornisa en tier exterior (x = halfTotal + 0.95) para cero solapamiento con 1.05m:
             const rightCorniceDimX2 = halfTotal + 0.95;
-            svg += drawVertDim(rightCorniceDimX2, C.WING_CORNICE_BOT, C.WING_CORNICE_TOP, C.DIMENSIONS.mouldingThickness.toFixed(2), 0);
+            svg += drawVertDim(rightCorniceDimX2, C.WING_CORNICE_BOT, C.WING_CORNICE_TOP, (C.WING_CORNICE_TOP - C.WING_CORNICE_BOT).toFixed(2), 0);
             svg += `  <line x1="${toSvgX(rightDimX)}" y1="${toSvgY(C.WING_CORNICE_BOT)}" x2="${toSvgX(rightCorniceDimX2 + 0.08)}" y2="${toSvgY(C.WING_CORNICE_BOT)}" class="dim-line" opacity="0.35"/>\n`;
             svg += `  <line x1="${toSvgX(halfTotal)}" y1="${toSvgY(C.WING_CORNICE_TOP)}" x2="${toSvgX(rightCorniceDimX2 + 0.08)}" y2="${toSvgY(C.WING_CORNICE_TOP)}" class="dim-line" opacity="0.35"/>\n`;
 
@@ -1105,7 +1121,7 @@ class FacadeEngine {
             svg += `  <line x1="${toSvgX(halfTotal)}" y1="${toSvgY(0)}" x2="${toSvgX(halfTotal)}" y2="${toSvgY(-0.85)}" class="dim-line" opacity="0.35"/>\n`;
 
             // Cota vano puerta central (2.40):
-            const doorDimY = C.DOOR_TOTAL_HEIGHT + 0.30;
+            const doorDimY = C.DOOR_HEIGHT + 0.25;
             svg += drawHorizDim(-doorHalfW, doorHalfW, doorDimY, `${C.DOOR_OPENING.toFixed(2)}`);
             svg += `  <line x1="${toSvgX(-doorHalfW)}" y1="${toSvgY(C.DOOR_HEIGHT)}" x2="${toSvgX(-doorHalfW)}" y2="${toSvgY(doorDimY + 0.10)}" class="dim-line" opacity="0.35"/>\n`;
             svg += `  <line x1="${toSvgX(doorHalfW)}" y1="${toSvgY(C.DOOR_HEIGHT)}" x2="${toSvgX(doorHalfW)}" y2="${toSvgY(doorDimY + 0.10)}" class="dim-line" opacity="0.35"/>\n`;
@@ -1119,9 +1135,9 @@ class FacadeEngine {
             const leftDim3 = -halfTotal - 1.75; // Nivel muro central (+7.50)
             const leftDim4 = -halfTotal - 2.35; // Nivel remate pilastra (+7.70)
 
-            svg += drawVertDim(leftDim1, 0, C.DOOR_TOTAL_HEIGHT, C.DOOR_TOTAL_HEIGHT.toFixed(2), 0);
+            svg += drawVertDim(leftDim1, 0, C.DOOR_HEIGHT, C.DOOR_HEIGHT.toFixed(2), 0);
             svg += `  <line x1="${toSvgX(-halfTotal)}" y1="${toSvgY(0)}" x2="${toSvgX(leftDim1 - 0.08)}" y2="${toSvgY(0)}" class="dim-line" opacity="0.35"/>\n`;
-            svg += `  <line x1="${toSvgX(-halfTotal)}" y1="${toSvgY(C.DOOR_TOTAL_HEIGHT)}" x2="${toSvgX(leftDim1 - 0.08)}" y2="${toSvgY(C.DOOR_TOTAL_HEIGHT)}" class="dim-line" opacity="0.35"/>\n`;
+            svg += `  <line x1="${toSvgX(-halfTotal)}" y1="${toSvgY(C.DOOR_HEIGHT)}" x2="${toSvgX(leftDim1 - 0.08)}" y2="${toSvgY(C.DOOR_HEIGHT)}" class="dim-line" opacity="0.35"/>\n`;
 
             svg += drawVertDim(leftDim2, 0, C.WING_CORNICE_TOP, C.WING_CORNICE_TOP.toFixed(2), 0);
             svg += `  <line x1="${toSvgX(-halfTotal)}" y1="${toSvgY(C.WING_CORNICE_TOP)}" x2="${toSvgX(leftDim2 - 0.08)}" y2="${toSvgY(C.WING_CORNICE_TOP)}" class="dim-line" opacity="0.35"/>\n`;
@@ -1495,9 +1511,9 @@ class FacadeEngine {
             if (layout.windowPositionsLeft.length > 0) {
                 const wLeftOuterM = +(layout.windowPositionsLeft[0] - winHalfOuter).toFixed(3);
                 dxf += dxfLine(wLeftOuterM, C.WINDOW_SILL_Y, wLeftOuterM - 0.27, C.WINDOW_SILL_Y, 'COTAS');
-                dxf += dxfLine(wLeftOuterM, C.WINDOW_SILL_Y + C.WINDOW_TOTAL_HEIGHT, wLeftOuterM - 0.27, C.WINDOW_SILL_Y + C.WINDOW_TOTAL_HEIGHT, 'COTAS');
-                dxf += dxfLine(wLeftOuterM - 0.22, C.WINDOW_SILL_Y, wLeftOuterM - 0.22, C.WINDOW_SILL_Y + C.WINDOW_TOTAL_HEIGHT, 'COTAS');
-                dxf += dxfText(wLeftOuterM - 0.38, C.WINDOW_SILL_Y + C.WINDOW_TOTAL_HEIGHT / 2 - 0.15, 0.18, C.WINDOW_TOTAL_HEIGHT.toFixed(2), 'COTAS', 90);
+                dxf += dxfLine(wLeftOuterM, C.WINDOW_SPRING_Y, wLeftOuterM - 0.27, C.WINDOW_SPRING_Y, 'COTAS');
+                dxf += dxfLine(wLeftOuterM - 0.22, C.WINDOW_SILL_Y, wLeftOuterM - 0.22, C.WINDOW_SPRING_Y, 'COTAS');
+                dxf += dxfText(wLeftOuterM - 0.38, C.WINDOW_SILL_Y + C.WINDOW_RECT_HEIGHT / 2 - 0.15, 0.18, C.WINDOW_RECT_HEIGHT.toFixed(2), 'COTAS', 90);
             }
 
             // Cota horizontal 1.60m
@@ -1506,7 +1522,7 @@ class FacadeEngine {
         }
 
         // Cota horizontal puerta central 2.40m (a y = 3.25m)
-        const doorDimY = C.DOOR_TOTAL_HEIGHT + 0.30;
+        const doorDimY = C.DOOR_HEIGHT + 0.25;
         dxf += dxfLine(-doorHalfW, doorDimY, doorHalfW, doorDimY, 'COTAS');
         dxf += dxfLine(-doorHalfW, C.DOOR_HEIGHT, -doorHalfW, doorDimY + 0.10, 'COTAS');
         dxf += dxfLine(doorHalfW, C.DOOR_HEIGHT, doorHalfW, doorDimY + 0.10, 'COTAS');
@@ -1519,10 +1535,10 @@ class FacadeEngine {
         const leftDim4 = -halfTotal - 2.55;
 
         // Cota 3.00 (Arranque arcos)
-        dxf += dxfLine(leftDim1, 0, leftDim1, C.DOOR_TOTAL_HEIGHT, 'COTAS');
+        dxf += dxfLine(leftDim1, 0, leftDim1, C.DOOR_HEIGHT, 'COTAS');
         dxf += dxfLine(-halfTotal, 0, leftDim1 - 0.10, 0, 'COTAS');
-        dxf += dxfLine(-halfTotal, C.DOOR_TOTAL_HEIGHT, leftDim1 - 0.10, C.DOOR_TOTAL_HEIGHT, 'COTAS');
-        dxf += dxfText(leftDim1 - 0.15, C.DOOR_TOTAL_HEIGHT / 2.0 - 0.20, 0.18, C.DOOR_TOTAL_HEIGHT.toFixed(2), 'COTAS', 90);
+        dxf += dxfLine(-halfTotal, C.DOOR_HEIGHT, leftDim1 - 0.10, C.DOOR_HEIGHT, 'COTAS');
+        dxf += dxfText(leftDim1 - 0.15, C.DOOR_HEIGHT / 2.0 - 0.20, 0.18, C.DOOR_HEIGHT.toFixed(2), 'COTAS', 90);
 
         // Cota 6.30 (Cornisa lateral)
         dxf += dxfLine(leftDim2, 0, leftDim2, C.WING_CORNICE_TOP, 'COTAS');
@@ -1557,7 +1573,7 @@ class FacadeEngine {
         dxf += dxfLine(rightCorniceDimX2, C.WING_CORNICE_BOT, rightCorniceDimX2, C.WING_CORNICE_TOP, 'COTAS');
         dxf += dxfLine(halfTotal, C.WING_CORNICE_BOT, rightCorniceDimX2 + 0.10, C.WING_CORNICE_BOT, 'COTAS');
         dxf += dxfLine(halfTotal, C.WING_CORNICE_TOP, rightCorniceDimX2 + 0.10, C.WING_CORNICE_TOP, 'COTAS');
-        dxf += dxfText(rightCorniceDimX2 + 0.20, (C.WING_CORNICE_BOT + C.WING_CORNICE_TOP) / 2.0 - 0.10, 0.18, C.DIMENSIONS.mouldingThickness.toFixed(2), 'COTAS', 90);
+        dxf += dxfText(rightCorniceDimX2 + 0.20, (C.WING_CORNICE_BOT + C.WING_CORNICE_TOP) / 2.0 - 0.10, 0.18, (C.WING_CORNICE_TOP - C.WING_CORNICE_BOT).toFixed(2), 'COTAS', 90);
 
         // Directrices de radios en DXF (Capa COTAS)
         const dxfRadiusLeader = (targetX, targetY, angleDeg, length, text) => {

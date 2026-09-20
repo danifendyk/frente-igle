@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const viewport = $('viewer-viewport');
     const wrapper = $('viewer-svg-wrapper');
     const sidebar = $('sidebar');
-    const storageKey = 'asamblea-fachada:v2';
+    const storageKey = 'asamblea-fachada:v4';
     const pairs = ['total-width', 'manual-count', 'free-space', 'dim-size', 'font-size'];
     const fields = [...pairs.map(name => `slider-${name}`), 'select-dist-mode', 'select-theme',
         'toggle-dimensions', 'toggle-badges', 'toggle-levels', 'toggle-human', 'toggle-axes',
@@ -104,10 +104,10 @@ document.addEventListener('DOMContentLoaded', () => {
         text('spec-total-width', meters(dimensions.totalWidth));
         text('print-width', `${meters(dimensions.interiorWidth)} interior · ${meters(dimensions.totalWidth)} exterior`);
         text('spec-heights', `${meters(dimensions.minHeight)} / ${meters(dimensions.maxHeight)}`);
-        text('spec-door', `${number(dimensions.doorWidth)} × ${meters(dimensions.doorHeight)}`);
-        text('spec-window', `${number(dimensions.windowWidth)} × ${meters(dimensions.windowHeight)}`);
+        text('spec-door', `${number(dimensions.doorWidth)} × ${meters(dimensions.doorHeight)} · total ${meters(dimensions.doorTotalHeight)}`);
+        text('spec-window', `${number(dimensions.windowWidth)} × ${meters(dimensions.windowHeight)} · total ${meters(dimensions.windowTotalHeight)}`);
         text('spec-projection', `${meters(dimensions.projectionWidth)} · +${meters(dimensions.heightDifference)}`);
-        text('spec-moulding', meters(dimensions.mouldingThickness));
+        text('spec-moulding', `${meters(dimensions.mouldingThickness)} mín. · ${meters(dimensions.actualMouldingThickness)} en arcos`);
         text('badge-window-count', `${layout.totalWindows} ventanas`);
         text('status-windows', `${layout.totalWindows} (${layout.numWindowsPerWing} + ${layout.numWindowsPerWing})`);
         text('print-windows', `${layout.totalWindows} (${layout.numWindowsPerWing} por ala)`);
